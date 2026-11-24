@@ -2,7 +2,8 @@
 
 import { useActionState } from "react";
 import type { FormState } from "@/lib/actions";
-import { adminCreateClient } from "@/lib/portal-actions";
+import { Loader2, Play } from "lucide-react";
+import { adminCreateClient, startTimer } from "@/lib/portal-actions";
 import { CURRENCIES, PRIORITIES, PROJECT_STATUSES, PROJECT_STATUS_LABEL, UPDATE_KINDS, UPDATE_KIND_LABEL } from "@/lib/portal-config";
 
 type Action = (state: FormState, f: FormData) => Promise<FormState>;
@@ -168,39 +169,77 @@ export function PostUpdateForm({ action }: { action: Action }) {
   );
 }
 
-export function ManualTimeForm({ action, people, bugs, meId }: { action: Action; people: { id: string; name: string }[]; bugs: { id: string; title: string }[]; meId: string }) {
+/** Start-timer form. "Started at" lets you back-date it when you forgot to press Start. */
+export function TimerStartForm({ projectId, bugId, compact }: { projectId: string; bugId?: string | null; compact?: boolean }) {
+  const [state, run, pending] = useActionState<FormState, FormData>(startTimer, undefined);
+  const id = bugId ?? projectId;
+  const button = (
+    <button className={compact ? "btn-gold !min-h-10 !px-4 !py-2 text-sm" : "btn-gold w-full"} disabled={pending} aria-busy={pending}>
+      {pending ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Play size={compact ? 12 : 16} fill="currentColor" aria-hidden="true" />}
+      {pending ? "Starting…" : compact ? "Start" : "Start timer"}
+    </button>
+  );
+  return (
+    <form action={run} className={compact ? "grid justify-items-end gap-1" : "grid gap-3"}>
+      <input type="hidden" name="projectId" value={projectId} />
+      {bugId && <input type="hidden" name="bugId" value={bugId} />}
+      {!compact && (
+        <>
+          <label htmlFor={`note-${id}`} className="sr-only">What are you working on?</label>
+          <input id={`note-${id}`} name="note" className="input" placeholder="What are you working on? (optional)" />
+          <div className="flex items-center gap-3">
+            <label htmlFor={`start-${id}`} className="text-sm whitespace-nowrap text-mist">Started at</label>
+            <input id={`start-${id}`} name="startAt" type="time" className="input !py-2" aria-describedby={`start-help-${id}`} />
+          </div>
+          <p id={`start-help-${id}`} className="-mt-1 text-xs text-mist/70">Leave empty to start now. Forgot to press Start? Enter when you began, e.g. 07:30.</p>
+        </>
+      )}
+      {button}
+      {state?.error && <p role="alert" className="text-sm text-red-300">{state.error}</p>}
+    </form>
+  );
+}
+
+export function ManualTimeForm({ action, people, bugs, meId, defaultBugId }: { action: Action; people?: { id: string; name: string }[]; bugs: { id: string; title: string }[]; meId: string; defaultBugId?: string }) {
   const { state, run, pending, key } = useForm(action);
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
   return (
     <form action={run} className="grid gap-4" key={key}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor="m-user">Who worked</label>
-          <select id="m-user" name="userId" className="input" defaultValue={meId}>
-            {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </div>
+      <div className={`grid gap-3 ${people?.length ? "sm:grid-cols-2" : ""}`}>
+        {people && people.length > 0 && (
+          <div>
+            <label className="label" htmlFor="m-user">Who worked</label>
+            <select id="m-user" name="userId" className="input" defaultValue={meId}>
+              {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+        )}
         <div>
           <label className="label" htmlFor="m-date">Date</label>
-          <input id="m-date" name="date" type="date" className="input" />
+          <input id="m-date" name="date" type="date" className="input" defaultValue={today} max={today} required />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label" htmlFor="m-h">Hours</label>
-          <input id="m-h" name="hours" type="number" min={0} max={24} step={1} inputMode="numeric" className="input" placeholder="0" />
+          <label className="label" htmlFor="m-from">From</label>
+          <input id="m-from" name="from" type="time" className="input" required />
         </div>
         <div>
-          <label className="label" htmlFor="m-m">Minutes</label>
-          <input id="m-m" name="minutes" type="number" min={0} max={59} step={1} inputMode="numeric" className="input" placeholder="0" />
+          <label className="label" htmlFor="m-to">To</label>
+          <input id="m-to" name="to" type="time" className="input" required />
         </div>
       </div>
-      <div>
-        <label className="label" htmlFor="m-bug">Bug (optional)</label>
-        <select id="m-bug" name="bugId" className="input" defaultValue="">
-          <option value="">General project work</option>
-          {bugs.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
-        </select>
-      </div>
+      {defaultBugId ? (
+        <input type="hidden" name="bugId" value={defaultBugId} />
+      ) : (
+        <div>
+          <label className="label" htmlFor="m-bug">Bug (optional)</label>
+          <select id="m-bug" name="bugId" className="input" defaultValue="">
+            <option value="">General project work</option>
+            {bugs.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
+          </select>
+        </div>
+      )}
       <div>
         <label className="label" htmlFor="m-note">Note</label>
         <input id="m-note" name="note" className="input" placeholder="What was done" />

@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { Play, Square } from "lucide-react";
 import { entryMs, groupHours, listBugs, listEntries, listRunning, type TimeEntry, requestTime } from "@/lib/portal";
 import { requireUser } from "@/lib/auth";
-import { startTimer, stopTimer } from "@/lib/portal-actions";
 import { OPEN_BUG_STATUSES, fmtDuration } from "@/lib/portal-config";
 import { PageTitle } from "@/components/dash/ui";
 import { BugStatusBadge } from "@/components/dash/portal-ui";
 import { TimeTable } from "@/components/dash/TimeTable";
-import { LiveClock, LiveTotal, PendingButton } from "@/components/dash/Live";
+import { LiveClock, LiveTotal } from "@/components/dash/Live";
+import { StopTimerForm } from "@/components/dash/TimerControl";
+import { TimerStartForm } from "@/components/dash/PortalForms";
 
 /** Start of today / this week (Mon) / this month, in India time. */
 function periodStarts(now: number) {
@@ -77,11 +77,7 @@ export default async function TimePage() {
             </Link>
           </div>
           <LiveClock startedAt={myRunning.startedAt.toISOString()} className="text-3xl font-bold text-emerald-200" />
-          <form action={stopTimer.bind(null, myRunning.id)}>
-            <PendingButton pendingText="Stopping…" className="flex min-h-11 items-center gap-2 rounded-full bg-red-500/90 px-5 font-semibold text-white hover:bg-red-500">
-              <Square size={14} fill="currentColor" aria-hidden="true" /> Stop
-            </PendingButton>
-          </form>
+          <StopTimerForm entryId={myRunning.id} admin={isAdmin} compact />
         </div>
       )}
 
@@ -111,18 +107,9 @@ export default async function TimePage() {
                     </Link>
                     <BugStatusBadge status={b.status} />
                     {active ? (
-                      <form action={stopTimer.bind(null, myRunning!.id)}>
-                        <PendingButton pendingText="…" className="flex min-h-10 items-center gap-2 rounded-full bg-red-500/90 px-4 text-sm font-semibold text-white">
-                          <Square size={12} fill="currentColor" aria-hidden="true" /> Stop
-                        </PendingButton>
-                      </form>
+                      <StopTimerForm entryId={myRunning!.id} admin={false} compact />
                     ) : (
-                      <form action={startTimer}>
-                        <input type="hidden" name="bugId" value={b.id} />
-                        <PendingButton pendingText="…" className="btn-gold !min-h-10 !px-4 !py-2 text-sm">
-                          <Play size={12} fill="currentColor" aria-hidden="true" /> Start
-                        </PendingButton>
-                      </form>
+                      <TimerStartForm projectId={b.projectId} bugId={b.id} compact />
                     )}
                   </li>
                 );
@@ -150,11 +137,7 @@ export default async function TimePage() {
                     </Link>
                   </div>
                   <LiveClock startedAt={r.startedAt.toISOString()} className="text-lg text-emerald-200" />
-                  <form action={stopTimer.bind(null, r.id)}>
-                    <PendingButton pendingText="…" className="min-h-10 rounded-full border border-red-400/30 px-4 text-sm text-red-200 hover:bg-red-500/10">
-                      Stop
-                    </PendingButton>
-                  </form>
+                  <StopTimerForm entryId={r.id} admin={r.userId === user.id} compact />
                 </li>
               ))}
             </ul>

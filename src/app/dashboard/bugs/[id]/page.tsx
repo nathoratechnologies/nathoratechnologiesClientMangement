@@ -4,11 +4,12 @@ import { ArrowLeft, Trash2, Send } from "lucide-react";
 import { listUsers } from "@/lib/db";
 import { getBug, getProject, listBugNotes, listEntries, listRunning, totalMs, groupHours, requestTime } from "@/lib/portal";
 import { requireUser, canAccessBug } from "@/lib/auth";
-import { addBugComment, deleteBug, updateBug } from "@/lib/portal-actions";
+import { addBugComment, addManualTime, deleteBug, updateBug } from "@/lib/portal-actions";
 import { BUG_PIPELINE, BUG_STATUSES, BUG_STATUS_LABEL, PRIORITIES, fmtDuration, fmtMoney } from "@/lib/portal-config";
 import { ref, timeAgo } from "@/components/dash/ui";
 import { BugStatusBadge, Pipeline, PriorityBadge, WorkingNow } from "@/components/dash/portal-ui";
 import { TimerControl } from "@/components/dash/TimerControl";
+import { ManualTimeForm } from "@/components/dash/PortalForms";
 import { TimeTable } from "@/components/dash/TimeTable";
 import { ConfirmButton, LiveTotal, PendingButton } from "@/components/dash/Live";
 
@@ -111,7 +112,20 @@ export default async function BugDetail({ params }: { params: Promise<{ id: stri
         </div>
 
         <div className="order-1 space-y-6 lg:order-2">
-          {canTime && <TimerControl running={running} projectId={bug.projectId} bugId={bug.id} title="Work on this bug" />}
+          {canTime && <TimerControl running={running} projectId={bug.projectId} bugId={bug.id} title="Work on this bug" admin={isAdmin} />}
+          {canTime && (
+            <details className="card p-5">
+              <summary className="font-display cursor-pointer font-semibold">Forgot the timer? Add time</summary>
+              <p className="mt-2 mb-4 text-sm text-mist">Enter when you started and finished, e.g. 07:30 → 10:15.</p>
+              <ManualTimeForm
+                action={addManualTime.bind(null, bug.projectId)}
+                people={isAdmin ? staff.map((s) => ({ id: s.id, name: s.name })) : undefined}
+                bugs={[]}
+                defaultBugId={bug.id}
+                meId={user.id}
+              />
+            </details>
+          )}
 
           {team && (
             <form action={updateBug.bind(null, id)} className="card space-y-4 p-5">

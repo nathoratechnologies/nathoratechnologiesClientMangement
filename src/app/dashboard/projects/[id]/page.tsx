@@ -4,7 +4,7 @@ import { ArrowLeft, ExternalLink, Trash2, Sparkles, Wrench, Rocket, StickyNote, 
 import { listUsers } from "@/lib/db";
 import { getProject, groupHours, listBugs, listEntries, listFiles, listRunning, listUpdates, totalMs, requestTime } from "@/lib/portal";
 import { requireUser, ownsProject } from "@/lib/auth";
-import { addManualTime, deleteFile, deleteProject, deleteUpdate, postUpdate, reportBug, updateProject } from "@/lib/portal-actions";
+import { addManualTime, deleteFile, deleteProject, sendDayBill, deleteUpdate, postUpdate, reportBug, updateProject } from "@/lib/portal-actions";
 import {
   OPEN_BUG_STATUSES,
   PROJECT_PIPELINE,
@@ -21,14 +21,17 @@ import { TimerControl } from "@/components/dash/TimerControl";
 import { TimeTable } from "@/components/dash/TimeTable";
 import { ConfirmButton, LiveTotal, PrintButton } from "@/components/dash/Live";
 import { FileUploader } from "@/components/dash/FileUploader";
+import { BillPanel } from "@/components/dash/BillPanel";
+import { buildDayBill, todayIST } from "@/lib/bill";
+import { whatsAppConfigured } from "@/lib/whatsapp";
 
 const KIND_ICON: Record<string, typeof Sparkles> = { FEATURE: Sparkles, FIX: Wrench, IMPROVEMENT: TrendingUp, DEPLOYMENT: Rocket, NOTE: StickyNote };
 const fmtSize = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const monthKey = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(0, 7);
 const monthLabel = (k: string) => new Date(`${k}-15T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
-export default async function ProjectDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; month?: string }> }) {
-  const [{ id }, { tab: tabParam, month }] = await Promise.all([params, searchParams]);
+export default async function ProjectDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; month?: string; day?: string }> }) {
+  const [{ id }, { tab: tabParam, month, day }] = await Promise.all([params, searchParams]);
   const user = await requireUser();
   const project = await getProject(id);
   if (!project) notFound();
@@ -67,6 +70,8 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
   const runningStarts = billed.filter((e) => !e.endedAt).map((e) => e.startedAt.toISOString());
   const people = groupHours(billed, (e) => [e.userId, e.userName], now);
   const allMs = totalMs(entries, now);
+  const billDay = day && /^d{4}-d{2}-d{2}$/.test(day) ? day : todayIST();
+  const bill = isAdmin && tab === "billing" ? await buildDayBill(project, billDay) : null;
 
   return (
     <>
@@ -128,7 +133,19 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
           </div>
 
           <div className="space-y-6">
-            {isAdmin && <TimerControl running={running} projectId={id} title="Work on this project" />}
+            {(isAdmin || isStaff) && <TimerControl running={running} projectId={id} title="Work on this project" admin={isAdmin} />}
+            {(isAdmin || isStaff) && (
+              <details className="card p-5" id="add-time">
+                <summary className="font-display cursor-pointer font-semibold">Forgot the timer? Add time</summary>
+                <p className="mt-2 mb-4 text-sm text-mist">Enter when you started and finished, e.g. 07:30 → 10:15.</p>
+                <ManualTimeForm
+                  action={addManualTime.bind(null, id)}
+                  people={isAdmin ? team.map((t) => ({ id: t.id, name: t.name })) : undefined}
+                  bugs={(isStaff ? myBugs : bugs).map((b) => ({ id: b.id, title: b.title }))}
+                  meId={user.id}
+                />
+              </details>
+            )}
             {(isStaff ? myBugs : openBugs).length > 0 && (
               <div className="card p-5">
                 <h2 className="font-display mb-3 font-semibold">{isStaff ? "Your bugs here" : "Open bugs"}</h2>
@@ -224,6 +241,37 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
 
       {tab === "billing" && (
         <div className="space-y-6">
+          {bill && (
+            <section id="bill" className="card scroll-mt-24 border-gold-500/30 p-6 print:hidden">
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-lg font-semibold">WhatsApp bill</h2>
+                  <p className="text-sm text-mist">
+                    {fmtDuration(bill.dayMs)}
+                    {project.hourlyRate > 0 ? ` × ${fmtMoney(project.hourlyRate, project.currency)}/h = ${fmtMoney(bill.dayAmount, project.currency)}` : ""} · to {bill.clientName}
+                  </p>
+                </div>
+                <form className="flex items-center gap-2" action={`/dashboard/projects/${id}`}>
+                  <input type="hidden" name="tab" value="billing" />
+                  <label htmlFor="bill-day" className="text-sm text-mist">Day</label>
+                  <input id="bill-day" name="day" type="date" defaultValue={billDay} max={todayIST()} className="input !w-auto !py-2" />
+                  <button className="btn-ghost !min-h-10 !px-4 !py-2 text-sm">Show</button>
+                </form>
+              </div>
+              {project.hourlyRate <= 0 && (
+                <p className="mb-3 rounded-xl border border-gold-500/30 bg-gold-500/10 p-3 text-sm text-gold-300">
+                  The hourly rate isn&apos;t set, so the bill has no amount. <Link href={`/dashboard/projects/${id}?tab=settings`} className="underline">Set the rate in Settings</Link>.
+                </p>
+              )}
+              {!bill.phone && (
+                <p className="mb-3 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
+                  {bill.clientName} has no WhatsApp number saved, so it can&apos;t open their chat.{" "}
+                  <Link href={`/dashboard/clients/${project.clientId}`} className="underline">Add their number</Link>, or copy the text below.
+                </p>
+              )}
+              <BillPanel text={bill.text} waUrl={bill.waUrl} send={whatsAppConfigured() && bill.phone ? sendDayBill.bind(null, id, billDay) : undefined} />
+            </section>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <nav className="flex gap-2 overflow-x-auto pb-1 print:hidden" aria-label="Billing period">
               {["", ...months].map((m) => (
@@ -309,11 +357,6 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
             <ProjectForm action={updateProject.bind(null, id)} defaults={project} submit="Save project" />
           </div>
           <div className="space-y-6">
-            <div className="card p-6">
-              <h2 className="font-display mb-1 font-semibold">Add time manually</h2>
-              <p className="mb-5 text-sm text-mist">For work done without starting the timer.</p>
-              <ManualTimeForm action={addManualTime.bind(null, id)} people={team.map((t) => ({ id: t.id, name: t.name }))} bugs={bugs.map((b) => ({ id: b.id, title: b.title }))} meId={user.id} />
-            </div>
             <form action={deleteProject.bind(null, id)}>
               <ConfirmButton
                 message={`Delete "${project.name}" with all its bugs, updates and time entries? This cannot be undone.`}

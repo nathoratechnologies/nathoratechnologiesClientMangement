@@ -10,7 +10,15 @@ export function toWaNumber(phone: string) {
   return d.replace(/^0+/, "");
 }
 
-type Kind = "CUSTOMER_CONFIRMATION" | "ADMIN_ALERT" | "BUG_ALERT" | "MANUAL";
+type Kind = "CUSTOMER_CONFIRMATION" | "ADMIN_ALERT" | "BUG_ALERT" | "BILL" | "MANUAL";
+
+/** True when the WhatsApp Cloud API keys are set, so the app can send messages itself. */
+export const whatsAppConfigured = () => !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
+
+/** Plain-text message to any number (e.g. a work bill to a client). */
+export async function sendText(phone: string, body: string, kind: Kind = "BILL") {
+  return send(toWaNumber(phone), body.slice(0, 4000), kind);
+}
 
 async function send(to: string, body: string, kind: Kind, enquiryId?: string, template?: { name: string; lang: string; params: string[] }) {
   const token = process.env.WHATSAPP_TOKEN;

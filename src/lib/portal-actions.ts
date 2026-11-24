@@ -7,7 +7,8 @@ import { revalidatePath } from "next/cache";
 import * as db from "./db";
 import * as portal from "./portal";
 import { requireUser, canAccessBug, ownsProject, type CurrentUser } from "./auth";
-import { notifyAdmin } from "./whatsapp";
+import { notifyAdmin, sendText, whatsAppConfigured } from "./whatsapp";
+import { buildDayBill, dayOf } from "./bill";
 import {
   BUG_STATUSES,
   BUG_STATUS_LABEL,
@@ -262,30 +263,69 @@ export async function deleteBug(id: string) {
 
 /* ---------- Time tracking ---------- */
 
-/**
- * Admin: start on any project (optionally a bug).
- * Staff: start only on a bug assigned to them.
- */
-export async function startTimer(f: FormData) {
-  const me = await requireUser(["ADMIN", "STAFF"]);
-  const bugId = str(f, "bugId") || null;
-  const bug = bugId ? await portal.getBug(bugId) : null;
-  if (bugId && (!bug || !canAccessBug(me, bug))) return;
-  if (me.role === "STAFF" && !bug) return;
-  const project = await portal.getProject(bug ? bug.projectId : str(f, "projectId"));
-  if (!project) return;
+const IST = "+05:30";
+const todayIST = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+const clock = (d: Date) => d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
+/** "2026-11-24" + "07:30" in India time. */
+const atIST = (date: string, time: string) => new Date(`${date}T${time}:00${IST}`);
 
-  await portal.startTimer(me, project, bug, str(f, "note").slice(0, 300));
-  if (bug && (bug.status === "REPORTED" || bug.status === "ASSIGNED")) {
-    await portal.updateBug(bug.id, { status: "DEVELOPING" });
-    await portal.addBugNote(bug.id, { system: true, body: `${me.name} started working · Status: ${BUG_STATUS_LABEL.DEVELOPING}` });
-  } else if (bug) {
-    await portal.addBugNote(bug.id, { system: true, body: `${me.name} started working` });
-  }
-  refresh();
+/**
+ * Who may log time where:
+ * admin anywhere; staff on projects they work on, and on a bug only if it is assigned to them.
+ */
+async function timeTarget(me: CurrentUser, projectId: string, bugId: string | null) {
+  const bug = bugId ? await portal.getBug(bugId) : null;
+  if (bugId && !bug) return { error: "That bug no longer exists" } as const;
+  if (bug && me.role === "STAFF" && bug.assignedToId !== me.id) return { error: "This bug is assigned to someone else" } as const;
+  const project = await portal.getProject(bug ? bug.projectId : projectId);
+  if (!project) return { error: "Project not found" } as const;
+  if (!(await portal.canViewProject(me, project))) return { error: "You don't have access to this project" } as const;
+  return { project, bug } as const;
 }
 
-export async function stopTimer(entryId: string) {
+/** Start the current user's timer. Optional `startAt` (HH:MM, today) back-dates it for "I forgot to press start". */
+export async function startTimer(_: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  if (me.role === "USER") return { error: "Only the Nathora team can track time" };
+  const t = await timeTarget(me, str(f, "projectId"), str(f, "bugId") || null);
+  if ("error" in t) return { error: t.error };
+
+  let startedAt: Date | undefined;
+  const startAt = str(f, "startAt");
+  if (startAt) {
+    startedAt = atIST(todayIST(), startAt);
+    const now = Date.now();
+    if (Number.isNaN(startedAt.getTime())) return { error: "Enter a valid start time" };
+    if (startedAt.getTime() > now + 60_000) return { error: `${startAt} is later than now. Pick a time that has already passed today.` };
+    const mine = await portal.listEntries({ userId: me.id });
+    const running = mine.find((e) => !e.endedAt);
+    if (running && running.startedAt > startedAt) {
+      return { error: `Your timer on "${running.bugTitle ?? running.projectName}" has been running since ${clock(running.startedAt)}. Stop it first, or pick a start time after that.` };
+    }
+    // Never let a back-dated timer cover time that is already logged (it would be billed twice).
+    const clash = mine.filter((e) => e.endedAt && e.endedAt > startedAt!).sort((a, b) => b.endedAt!.getTime() - a.endedAt!.getTime())[0];
+    if (clash) {
+      return { error: `You already logged ${clock(clash.startedAt)}–${clock(clash.endedAt!)} on "${clash.bugTitle ?? clash.projectName}". Pick a start time after ${clock(clash.endedAt!)}.` };
+    }
+  }
+
+  await portal.startTimer(me, t.project, t.bug, str(f, "note").slice(0, 300), startedAt);
+  const since = startedAt ? ` (from ${clock(startedAt)})` : "";
+  if (t.bug && (t.bug.status === "REPORTED" || t.bug.status === "ASSIGNED")) {
+    await portal.updateBug(t.bug.id, { status: "DEVELOPING" });
+    await portal.addBugNote(t.bug.id, { system: true, body: `${me.name} started working${since} · Status: ${BUG_STATUS_LABEL.DEVELOPING}` });
+  } else if (t.bug) {
+    await portal.addBugNote(t.bug.id, { system: true, body: `${me.name} started working${since}` });
+  }
+  refresh();
+  return { ok: true, message: "Timer started" };
+}
+
+/**
+ * Stop a timer. When the admin ticks "Prepare WhatsApp bill", they land on the
+ * project's billing tab with that day's bill ready to send to the client.
+ */
+export async function stopTimer(entryId: string, f?: FormData) {
   const me = await requireUser(["ADMIN", "STAFF"]);
   const e = await portal.getEntry(entryId);
   if (!e || (me.role !== "ADMIN" && e.userId !== me.id)) return;
@@ -295,39 +335,82 @@ export async function stopTimer(entryId: string) {
     await portal.addBugNote(done.bugId, { system: true, body: `${done.userName} stopped working (${Math.floor(mins / 60)}h ${mins % 60}m logged)` });
   }
   refresh();
+  if (done && me.role === "ADMIN" && f?.get("bill") === "1") {
+    redirect(`/dashboard/projects/${done.projectId}?tab=billing&day=${dayOf(done.startedAt)}#bill`);
+  }
 }
 
-export async function addManualTime(projectId: string, _: FormState, f: FormData): Promise<FormState> {
-  await requireUser(["ADMIN"]);
+/** Send a day's bill to the client through the WhatsApp Cloud API. */
+export async function sendDayBill(projectId: string, day: string, _: FormState): Promise<FormState> {
+  const me = await requireUser(["ADMIN"]);
   const project = await portal.getProject(projectId);
   if (!project) return { error: "Project not found" };
-  const hours = Number(str(f, "hours") || 0);
-  const minutes = Number(str(f, "minutes") || 0);
-  const ms = Math.round((hours * 60 + minutes) * 60_000);
-  if (!Number.isFinite(ms) || ms <= 0 || ms > 24 * 3_600_000) return { error: "Enter a time between 1 minute and 24 hours" };
-  const person = await db.getUserById(str(f, "userId"));
-  if (!person || person.role === "USER") return { error: "Choose who did the work" };
-  const bugId = str(f, "bugId") || null;
-  const bug = bugId ? await portal.getBug(bugId) : null;
-  if (bug && bug.projectId !== projectId) return { error: "That bug belongs to another project" };
+  if (!whatsAppConfigured()) return { error: "WhatsApp API keys are not set up yet. Use “Open in WhatsApp” instead." };
+  const bill = await buildDayBill(project, day);
+  if (!bill.phone) return { error: "This client has no WhatsApp number saved. Add it under Clients › details." };
+  if (!bill.sessions.length) return { error: "No finished work on this day to bill." };
+  const log = await sendText(bill.phone, bill.text, "BILL");
+  if (log.status !== "SENT") return { error: `WhatsApp did not accept the message: ${log.detail ?? log.status}` };
+  await portal.addUpdate(projectId, { kind: "NOTE", title: `Work report sent on WhatsApp (${day})`, body: "", authorName: me.name });
+  refresh();
+  return { ok: true, message: `Bill sent to ${bill.clientName} on WhatsApp` };
+}
 
-  const dateStr = str(f, "date");
-  const end = dateStr ? new Date(`${dateStr}T18:00:00+05:30`) : new Date();
-  if (Number.isNaN(end.getTime())) return { error: "Pick a valid date" };
+/**
+ * Log time after the fact: a date plus From and To times (India time), e.g. 07:30 → 10:15.
+ * A To time earlier than From means the work ran past midnight.
+ */
+export async function addManualTime(projectId: string, _: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  if (me.role === "USER") return { error: "Only the Nathora team can log time" };
+  const t = await timeTarget(me, projectId, str(f, "bugId") || null);
+  if ("error" in t) return { error: t.error };
+  if (t.bug && t.bug.projectId !== projectId) return { error: "That bug belongs to another project" };
+
+  // Staff always log their own time; admin can log it for anyone on the team.
+  const person = me.role === "ADMIN" && str(f, "userId") ? await db.getUserById(str(f, "userId")) : await db.getUserById(me.id);
+  if (!person || person.role === "USER") return { error: "Choose who did the work" };
+
+  const date = str(f, "date") || todayIST();
+  const from = str(f, "from");
+  const to = str(f, "to");
+  if (!from || !to) return { error: "Enter both the From and To times" };
+  const start = atIST(date, from);
+  let end = atIST(date, to);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return { error: "Enter valid times" };
+  if (end <= start) end = new Date(end.getTime() + 86_400_000); // past midnight
+  const ms = end.getTime() - start.getTime();
+  if (ms < 60_000) return { error: "The time must be at least 1 minute" };
+  if (ms > 16 * 3_600_000) return { error: "That is more than 16 hours. Split it into separate entries." };
+  if (end.getTime() > Date.now() + 60_000) return { error: "The end time is in the future. To log work you are doing now, use Start timer with a start time instead." };
+
+  // Refuse overlaps so the same hours are never billed twice.
+  const clash = (await portal.listEntries({ userId: person.id })).find((e) => {
+    const eEnd = e.endedAt ? e.endedAt.getTime() : Date.now();
+    return e.startedAt.getTime() < end.getTime() && eEnd > start.getTime();
+  });
+  if (clash) {
+    return {
+      error: `${person.id === me.id ? "You" : person.name} already have time logged ${clock(clash.startedAt)}–${clash.endedAt ? clock(clash.endedAt) : "now"} on "${clash.bugTitle ?? clash.projectName}". Change the times so they don't overlap.`,
+    };
+  }
+
   await portal.addManualEntry({
     projectId,
-    projectName: project.name,
-    clientId: project.clientId,
-    bugId: bug?.id ?? null,
-    bugTitle: bug?.title ?? null,
+    projectName: t.project.name,
+    clientId: t.project.clientId,
+    bugId: t.bug?.id ?? null,
+    bugTitle: t.bug?.title ?? null,
     userId: person.id,
     userName: person.name,
     note: str(f, "note").slice(0, 300),
-    startedAt: new Date(end.getTime() - ms),
+    startedAt: start,
     endedAt: end,
   });
+  if (t.bug) await portal.addBugNote(t.bug.id, { system: true, body: `${person.name}: ${clock(start)}–${clock(end)} added manually` });
   refresh();
-  return { ok: true, message: `Added ${hours || 0}h ${minutes || 0}m for ${person.name}` };
+  const mins = Math.round(ms / 60000);
+  return { ok: true, message: `Added ${Math.floor(mins / 60)}h ${mins % 60}m for ${person.name} (${clock(start)}–${clock(end)})` };
 }
 
 export async function deleteTimeEntry(entryId: string) {

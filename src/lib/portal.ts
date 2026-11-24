@@ -264,15 +264,20 @@ function closeEntry(tx: Transaction, e: TimeEntry, at: Date) {
  * Starts a timer for `user` on a project (and optionally a bug).
  * A person can only run one timer at a time, so any running one is stopped first.
  */
-export async function startTimer(user: { id: string; name: string }, project: Project, bug: Bug | null, note: string) {
+export async function startTimer(user: { id: string; name: string }, project: Project, bug: Bug | null, note: string, startedAt?: Date) {
   const now = new Date();
+  const start = startedAt ?? now;
   const ref = entries().doc();
   await firestore.runTransaction(async (tx) => {
     const running = (await tx.get(entries().where("endedAt", "==", null).where("userId", "==", user.id))).docs.map(entryOf);
     // Firestore needs every read before any write.
     const bugDocs = await Promise.all(running.filter((r) => r.bugId).map((r) => tx.get(bugs().doc(r.bugId!))));
     const liveBugs = new Set(bugDocs.filter((d) => d.exists).map((d) => d.id));
-    for (const r of running) closeEntry(tx, { ...r, bugId: r.bugId && liveBugs.has(r.bugId) ? r.bugId : null }, now);
+    // A back-dated start ("I began at 7:30") ends the previous timer at that moment.
+    for (const r of running) {
+      const end = new Date(Math.max(r.startedAt.getTime(), Math.min(start.getTime(), now.getTime())));
+      closeEntry(tx, { ...r, bugId: r.bugId && liveBugs.has(r.bugId) ? r.bugId : null }, end);
+    }
 
     tx.set(ref, {
       projectId: project.id,
@@ -283,7 +288,7 @@ export async function startTimer(user: { id: string; name: string }, project: Pr
       userId: user.id,
       userName: user.name,
       note,
-      startedAt: now,
+      startedAt: start,
       endedAt: null,
       manual: false,
       createdAt: now,
