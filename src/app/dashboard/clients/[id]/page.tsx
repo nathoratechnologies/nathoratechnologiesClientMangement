@@ -1,15 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bug, Clock, FolderKanban, Wallet, Phone, Mail } from "lucide-react";
-import { getUserById } from "@/lib/db";
+import { ArrowLeft, Bug, Clock, FolderKanban, Wallet, Phone, Mail, Pencil } from "lucide-react";
+import { getUserById, isPlaceholderEmail } from "@/lib/db";
 import { listBugs, listEntries, listProjects, totalMs, requestTime } from "@/lib/portal";
 import { requireUser } from "@/lib/auth";
-import { adminResetPassword, adminUpdateClient, createProject } from "@/lib/portal-actions";
+import { adminResetPassword, createProject } from "@/lib/portal-actions";
 import { adminUpdateUser } from "@/lib/actions";
 import { OPEN_BUG_STATUSES, amountFor, fmtDuration, fmtMoney } from "@/lib/portal-config";
 import { BugList, ProjectList, Stat } from "@/components/dash/portal-ui";
 import { ProjectForm, ResetPasswordForm } from "@/components/dash/PortalForms";
-import { PendingButton } from "@/components/dash/Live";
 
 export default async function ClientDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -69,28 +68,28 @@ export default async function ClientDetail({ params }: { params: Promise<{ id: s
             <ProjectForm action={createProject.bind(null, client.id)} submit="Create project" />
           </div>
 
-          <form action={adminUpdateClient.bind(null, client.id)} className="card grid gap-4 p-6">
-            <h2 className="font-display font-semibold">Client details</h2>
-            <div>
-              <label className="label" htmlFor="cd-name">Contact name</label>
-              <input id="cd-name" name="name" className="input" defaultValue={client.name} required />
+          <div className="card grid gap-4 p-6">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="font-display font-semibold">Client details</h2>
+              <Link href={`/dashboard/users/${client.id}`} className="btn-ghost !min-h-9 !px-3 !py-1.5 text-sm">
+                <Pencil size={14} aria-hidden="true" /> Edit
+              </Link>
             </div>
-            <div>
-              <label className="label" htmlFor="cd-company">Company</label>
-              <input id="cd-company" name="company" className="input" defaultValue={client.company ?? ""} />
-            </div>
-            <div>
-              <label className="label" htmlFor="cd-phone">Phone</label>
-              <input id="cd-phone" name="phone" type="tel" className="input" defaultValue={client.phone ?? ""} />
-            </div>
+            <dl className="grid gap-2 text-sm">
+              <div><dt className="text-mist">Contact</dt><dd>{client.name}</dd></div>
+              {client.company && <div><dt className="text-mist">Company</dt><dd>{client.company}</dd></div>}
+              <div><dt className="text-mist">WhatsApp</dt><dd>{client.phone || <span className="text-red-300">Not added (needed for WhatsApp bills)</span>}</dd></div>
+              {!isPlaceholderEmail(client.email) && <div><dt className="text-mist">Email</dt><dd className="break-all">{client.email}</dd></div>}
+              {client.address && <div><dt className="text-mist">Address</dt><dd className="whitespace-pre-wrap">{client.address}</dd></div>}
+              {client.notes && <div><dt className="text-mist">Other details</dt><dd className="whitespace-pre-wrap">{client.notes}</dd></div>}
+            </dl>
             <div className="flex flex-wrap gap-2 text-sm">
               {client.phone && <a href={`tel:${client.phone}`} className="btn-ghost !min-h-9 !px-3 !py-1.5"><Phone size={14} aria-hidden="true" /> Call</a>}
-              {!client.email.endsWith("@client.nathora.local") && (
-                <a href={`mailto:${client.email}`} className="btn-ghost !min-h-9 !px-3 !py-1.5"><Mail size={14} aria-hidden="true" /> {client.email}</a>
+              {!isPlaceholderEmail(client.email) && (
+                <a href={`mailto:${client.email}`} className="btn-ghost !min-h-9 !px-3 !py-1.5"><Mail size={14} aria-hidden="true" /> Email</a>
               )}
             </div>
-            <PendingButton className="btn-ghost">Save details</PendingButton>
-          </form>
+          </div>
 
           <div className="card space-y-5 p-6">
             <h2 className="font-display font-semibold">Login</h2>

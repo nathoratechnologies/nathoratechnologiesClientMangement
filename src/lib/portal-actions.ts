@@ -65,13 +65,6 @@ export async function adminCreateClient(_: FormState, f: FormData): Promise<Form
   return { ok: true, message: `Client ${name} created. Login: ${username} / ${password}` };
 }
 
-export async function adminUpdateClient(id: string, f: FormData) {
-  await requireUser(["ADMIN"]);
-  const name = str(f, "name");
-  if (name.length < 2) return;
-  await db.updateUser(id, { name, company: str(f, "company") || null, phone: str(f, "phone") || null });
-  refresh();
-}
 
 export async function adminResetPassword(id: string, _: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser(["ADMIN"]);
@@ -427,4 +420,73 @@ export async function deleteFile(fileId: string) {
   if (!f || (me.role !== "ADMIN" && f.uploadedById !== me.id)) return;
   await portal.deleteFile(fileId);
   refresh();
+}
+
+/* ---------- Edit any user's details (admin) ---------- */
+
+const detailsSchema = z.object({
+  name: z.string().min(2, "Enter the name"),
+  email: z.union([z.literal(""), z.string().email("Enter a valid email, or leave it blank")]),
+  username: z.union([
+    z.literal(""),
+    z
+      .string()
+      .min(3, "Username needs at least 3 characters")
+      .max(32, "Username is too long")
+      .regex(/^[a-z0-9._-]+$/, "Username: use only letters, numbers, dot, dash or underscore"),
+  ]),
+  phone: z.string().max(30),
+  company: z.string().max(120),
+  address: z.string().max(500),
+  notes: z.string().max(4000),
+});
+
+export async function adminEditUser(id: string, _: FormState, f: FormData): Promise<FormState> {
+  await requireUser(["ADMIN"]);
+  const user = await db.getUserById(id);
+  if (!user) return { error: "User not found" };
+  const parsed = detailsSchema.safeParse({
+    name: str(f, "name"),
+    email: str(f, "email").toLowerCase(),
+    username: str(f, "username").toLowerCase(),
+    phone: str(f, "phone"),
+    company: str(f, "company"),
+    address: str(f, "address"),
+    notes: str(f, "notes"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const d = parsed.data;
+  if (!d.email && !d.username) return { error: "Give either an email or a username, so they can sign in" };
+
+  const error = await db.updateUserDetails(id, {
+    name: d.name,
+    // No email: keep (or create) the unique placeholder so the account stays valid.
+    email: d.email || (db.isPlaceholderEmail(user.email) ? user.email : `${d.username}@client.nathora.local`),
+    username: d.username || null,
+    phone: d.phone || null,
+    company: d.company || null,
+    address: d.address || null,
+    notes: d.notes || null,
+  });
+  if (error) return { error };
+  if (user.role === "USER") await portal.renameClientProjects(id, d.company || d.name);
+  refresh();
+  return { ok: true, message: "Details saved" };
+}
+
+/** Quick rate change from the billing tab. */
+export async function updateRate(projectId: string, _: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser(["ADMIN"]);
+  const p = await portal.getProject(projectId);
+  if (!p) return { error: "Project not found" };
+  const raw = str(f, "hourlyRate").replace(/[,\s₹$]/g, "");
+  const rate = Number(raw);
+  if (!raw || !Number.isFinite(rate) || rate < 0 || rate > 1_000_000) return { error: "Enter the rate as a number, e.g. 500" };
+  const currency = (CURRENCIES as readonly string[]).includes(str(f, "currency")) ? str(f, "currency") : p.currency;
+  await portal.updateProject(projectId, { hourlyRate: Math.round(rate * 100) / 100, currency });
+  if (rate !== p.hourlyRate) {
+    await portal.addUpdate(projectId, { kind: "NOTE", title: `Hourly rate set to ${currency} ${rate}`, body: "", authorName: me.name });
+  }
+  refresh();
+  return { ok: true, message: "Rate saved. All amounts are updated." };
 }

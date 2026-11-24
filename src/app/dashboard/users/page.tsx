@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Pencil } from "lucide-react";
 import { listEnquiries, listUsers } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { adminUpdateUser } from "@/lib/actions";
@@ -22,13 +24,17 @@ export default async function UsersPage() {
             <li key={u.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold">
-                  {u.name} {!u.active && <span className="ml-1 text-xs font-normal text-red-300">(disabled)</span>}
+                  <Link href={`/dashboard/users/${u.id}`} className="hover:text-gold-300 hover:underline">{u.company ? `${u.company} · ${u.name}` : u.name}</Link>{" "}
+                  {!u.active && <span className="ml-1 text-xs font-normal text-red-300">(disabled)</span>}
                 </p>
                 <p className="truncate text-sm text-mist">
-                  {u.email}
+                  {u.username ? `@${u.username}` : u.email}
                   {u.phone ? ` · ${u.phone}` : ""} · {u.role === "USER" ? `${owned(u.id)} enquiries` : `${assigned(u.id)} assigned`}
                 </p>
               </div>
+              <Link href={`/dashboard/users/${u.id}`} className="btn-ghost !min-h-10 !px-4 !py-2 text-sm">
+                <Pencil size={14} aria-hidden="true" /> Edit
+              </Link>
               {u.id === me.id ? (
                 <span className="text-xs tracking-widest text-gold-500">YOU · ADMIN</span>
               ) : (

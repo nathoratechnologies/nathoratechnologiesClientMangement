@@ -14,6 +14,9 @@ export type User = {
   username?: string | null;
   /** Company / business name, mostly for clients. */
   company?: string | null;
+  address?: string | null;
+  /** Free-form details the admin keeps about the person (GST no., website, contacts…). */
+  notes?: string | null;
   password: string;
   role: Role;
   active: boolean;
@@ -146,6 +149,31 @@ export async function createUser(u: {
     return true;
   });
   return created ? getUserById(ref.id) : null;
+}
+
+/** Placeholder email given to clients created without one. */
+export const isPlaceholderEmail = (email: string) => email.endsWith("@client.nathora.local");
+
+/**
+ * Admin edit of a person's details. Email and username must stay unique;
+ * returns an error message, or null when saved.
+ */
+export async function updateUserDetails(
+  id: string,
+  d: { name: string; email: string; username: string | null; phone: string | null; company: string | null; address: string | null; notes: string | null },
+): Promise<string | null> {
+  const email = d.email.toLowerCase();
+  const username = d.username ? d.username.toLowerCase() : null;
+  return firestore.runTransaction(async (tx) => {
+    const byEmail = await tx.get(users().where("email", "==", email).limit(2));
+    if (byEmail.docs.some((x) => x.id !== id)) return "Another account already uses this email";
+    if (username) {
+      const byName = await tx.get(users().where("username", "==", username).limit(2));
+      if (byName.docs.some((x) => x.id !== id)) return "Another account already uses this username";
+    }
+    tx.update(users().doc(id), { ...d, email, username });
+    return null;
+  });
 }
 
 export async function updateUser(id: string, data: Partial<Pick<User, "name" | "phone" | "password" | "role" | "active" | "company">>) {

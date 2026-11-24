@@ -4,7 +4,7 @@ import { ArrowLeft, ExternalLink, Trash2, Sparkles, Wrench, Rocket, StickyNote, 
 import { listUsers } from "@/lib/db";
 import { getProject, groupHours, listBugs, listEntries, listFiles, listRunning, listUpdates, totalMs, requestTime } from "@/lib/portal";
 import { requireUser, ownsProject } from "@/lib/auth";
-import { addManualTime, deleteFile, deleteProject, sendDayBill, deleteUpdate, postUpdate, reportBug, updateProject } from "@/lib/portal-actions";
+import { addManualTime, deleteFile, deleteProject, sendDayBill, updateRate, deleteUpdate, postUpdate, reportBug, updateProject } from "@/lib/portal-actions";
 import {
   OPEN_BUG_STATUSES,
   PROJECT_PIPELINE,
@@ -15,8 +15,8 @@ import {
   fmtMoney,
 } from "@/lib/portal-config";
 import { timeAgo } from "@/components/dash/ui";
-import { BugList, Pipeline, ProjectStatusBadge, Stat, Tabs, WorkingNow } from "@/components/dash/portal-ui";
-import { ManualTimeForm, PostUpdateForm, ProjectForm, ReportBugForm } from "@/components/dash/PortalForms";
+import { BugList, Pipeline, ProjectStatusBadge, Stat, Tabs, WorkStatus, WorkingNow } from "@/components/dash/portal-ui";
+import { ManualTimeForm, PostUpdateForm, ProjectForm, RateForm, ReportBugForm } from "@/components/dash/PortalForms";
 import { TimerControl } from "@/components/dash/TimerControl";
 import { TimeTable } from "@/components/dash/TimeTable";
 import { ConfirmButton, LiveTotal, PrintButton } from "@/components/dash/Live";
@@ -118,7 +118,7 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
                 <Stat
                   label="Amount so far"
                   value={<LiveTotal baseMs={totalMs(entries.filter((e) => e.endedAt), now)} running={entries.filter((e) => !e.endedAt).map((e) => e.startedAt.toISOString())} show="money" rate={project.hourlyRate} currency={project.currency} serverNow={now} />}
-                  sub={project.hourlyRate ? `${fmtMoney(project.hourlyRate, project.currency)} / hour` : "Rate not set yet"}
+                  sub={project.hourlyRate ? `${fmtMoney(project.hourlyRate, project.currency)} / hour` : isAdmin ? <Link href={`/dashboard/projects/${id}?tab=billing`} className="text-gold-300 underline">Set the rate per hour</Link> : "Rate not set yet"}
                 />
               )}
             </div>
@@ -161,6 +161,7 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
                 </ul>
               </div>
             )}
+            {user.role === "USER" && <WorkStatus entries={entries} now={now} />}
             {user.role === "USER" && (
               <div className="card p-5">
                 <h2 className="font-display mb-1 font-semibold">Found a problem?</h2>
@@ -241,6 +242,11 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
 
       {tab === "billing" && (
         <div className="space-y-6">
+          {isAdmin && (
+            <div className={`card p-5 print:hidden ${project.hourlyRate > 0 ? "" : "border-gold-500/40"}`}>
+              <RateForm action={updateRate.bind(null, id)} rate={project.hourlyRate} currency={project.currency} />
+            </div>
+          )}
           {bill && (
             <section id="bill" className="card scroll-mt-24 border-gold-500/30 p-6 print:hidden">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -260,7 +266,7 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
               </div>
               {project.hourlyRate <= 0 && (
                 <p className="mb-3 rounded-xl border border-gold-500/30 bg-gold-500/10 p-3 text-sm text-gold-300">
-                  The hourly rate isn&apos;t set, so the bill has no amount. <Link href={`/dashboard/projects/${id}?tab=settings`} className="underline">Set the rate in Settings</Link>.
+                  The hourly rate isn&apos;t set, so the bill has no amount. Enter it in the “Rate per hour” box at the top of this page.
                 </p>
               )}
               {!bill.phone && (

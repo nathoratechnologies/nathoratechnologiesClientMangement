@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Check, Bug as BugIcon, FolderKanban } from "lucide-react";
 import { BUG_STATUS_LABEL, PROJECT_STATUS_LABEL, fmtDuration } from "@/lib/portal-config";
 import { ref, timeAgo } from "./ui";
+import { LiveClock, LiveTotal } from "./Live";
 
 const TONE = {
   gold: "bg-gold-500/15 text-gold-300 border-gold-500/30",
@@ -209,5 +210,68 @@ export function Tabs({ tabs, active }: { tabs: { href: string; label: string; ke
         </Link>
       ))}
     </nav>
+  );
+}
+
+type WorkEntry = { id: string; userName: string; startedAt: Date; endedAt: Date | null; bugTitle: string | null; note: string };
+const clockIST = (d: Date) => d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
+const dayIST = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+/**
+ * Read-only timer status for clients: is someone working right now, since when,
+ * and how much was done today. There are no start/stop controls here on purpose.
+ */
+export function WorkStatus({ entries, now }: { entries: WorkEntry[]; now: number }) {
+  const running = entries.filter((e) => !e.endedAt);
+  const today = dayIST(new Date(now));
+  const todayMs = entries
+    .filter((e) => dayIST(e.startedAt) === today)
+    .reduce((s, e) => s + Math.max(0, (e.endedAt ? e.endedAt.getTime() : now) - e.startedAt.getTime()), 0);
+  const last = entries.filter((e) => e.endedAt).sort((a, b) => b.endedAt!.getTime() - a.endedAt!.getTime())[0];
+
+  return (
+    <div className={`card p-5 ${running.length ? "border-emerald-400/40 bg-emerald-500/[0.06]" : ""}`}>
+      <h2 className="font-display mb-3 font-semibold">Work status</h2>
+      {running.length ? (
+        <ul className="space-y-4">
+          {running.map((r) => (
+            <li key={r.id}>
+              <p className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                <span className="relative flex h-2.5 w-2.5" aria-hidden="true">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                </span>
+                Timer running
+              </p>
+              <LiveClock startedAt={r.startedAt.toISOString()} className="my-1 block text-3xl font-bold text-emerald-100" />
+              <p className="text-sm text-mist">
+                {r.userName} started at {clockIST(r.startedAt)}
+                {r.bugTitle ? ` · Bug: ${r.bugTitle}` : ""}
+                {r.note ? ` · ${r.note}` : ""}
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <>
+          <p className="flex items-center gap-2 text-sm font-semibold text-mist">
+            <span className="h-2.5 w-2.5 rounded-full bg-white/30" aria-hidden="true" /> Timer stopped
+          </p>
+          <p className="mt-1 text-sm text-mist">
+            {last
+              ? `Last work ended ${dayIST(last.endedAt!) === today ? "today" : last.endedAt!.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" })} at ${clockIST(last.endedAt!)} (${last.userName}).`
+              : "No work has been logged yet."}
+          </p>
+        </>
+      )}
+      <p className="mt-4 border-t border-white/10 pt-3 text-sm">
+        <span className="text-mist">Worked today:</span>{" "}
+        {running.length ? (
+          <LiveTotal baseMs={todayMs - running.reduce((s, r) => s + Math.max(0, now - r.startedAt.getTime()), 0)} running={running.map((r) => r.startedAt.toISOString())} show="duration" serverNow={now} />
+        ) : (
+          fmtDuration(todayMs)
+        )}
+      </p>
+    </div>
   );
 }

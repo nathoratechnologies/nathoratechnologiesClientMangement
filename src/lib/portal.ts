@@ -413,3 +413,12 @@ export async function readFile(id: string) {
 export async function deleteFile(id: string) {
   await firestore.recursiveDelete(files().doc(id));
 }
+
+/** Keep the client name copied onto projects in sync after the client's details change. */
+export async function renameClientProjects(clientId: string, clientName: string) {
+  const q = await projects().where("clientId", "==", clientId).get();
+  if (q.empty) return;
+  const batch = firestore.batch();
+  q.docs.forEach((d) => batch.update(d.ref, { clientName }));
+  await batch.commit();
+}

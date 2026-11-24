@@ -249,3 +249,64 @@ export function ManualTimeForm({ action, people, bugs, meId, defaultBugId }: { a
     </form>
   );
 }
+
+type UserDetails = { name: string; email: string; username: string; phone: string; company: string; address: string; notes: string };
+
+/** Admin form for all of a person's details. */
+export function EditUserForm({ action, user, isClient }: { action: Action; user: UserDetails; isClient: boolean }) {
+  const [state, run, pending] = useActionState<FormState, FormData>(action, undefined);
+  return (
+    <form action={run} className="grid gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="e-name">{isClient ? "Contact name" : "Name"}</label>
+          <input id="e-name" name="name" className="input" required defaultValue={user.name} />
+        </div>
+        <div>
+          <label className="label" htmlFor="e-company">Company</label>
+          <input id="e-company" name="company" className="input" defaultValue={user.company} />
+        </div>
+        <div>
+          <label className="label" htmlFor="e-username">Username (login)</label>
+          <input id="e-username" name="username" className="input" defaultValue={user.username} autoCapitalize="none" spellCheck={false} />
+        </div>
+        <div>
+          <label className="label" htmlFor="e-email">Email (login)</label>
+          <input id="e-email" name="email" type="email" className="input" defaultValue={user.email} />
+        </div>
+        <div>
+          <label className="label" htmlFor="e-phone">Phone / WhatsApp</label>
+          <input id="e-phone" name="phone" type="tel" className="input" defaultValue={user.phone} placeholder="+91 98765 43210" />
+        </div>
+      </div>
+      <div>
+        <label className="label" htmlFor="e-address">Address</label>
+        <textarea id="e-address" name="address" rows={2} className="input resize-y" defaultValue={user.address} />
+      </div>
+      <div>
+        <label className="label" htmlFor="e-notes">Other details</label>
+        <textarea id="e-notes" name="notes" rows={4} className="input resize-y" defaultValue={user.notes} placeholder="GST number, website, other contacts, anything you want to remember" />
+      </div>
+      <Result state={state} />
+      <button className="btn-gold justify-self-start" disabled={pending}>{pending ? "Saving…" : "Save details"}</button>
+    </form>
+  );
+}
+
+/** Inline "rate per hour" editor (accepts 1,500 or ₹1500 as well as 1500). */
+export function RateForm({ action, rate, currency }: { action: Action; rate: number; currency: string }) {
+  const [state, run, pending] = useActionState<FormState, FormData>(action, undefined);
+  return (
+    <form action={run} className="grid gap-2">
+      <label className="label !mb-0" htmlFor="rate-input">Rate per hour</label>
+      <div className="flex flex-wrap gap-2">
+        <select name="currency" defaultValue={currency} className="input !w-24 !py-2" aria-label="Currency">
+          {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <input id="rate-input" name="hourlyRate" inputMode="decimal" defaultValue={rate || ""} placeholder="e.g. 500" className="input !w-36 !py-2" required />
+        <button className="btn-gold !min-h-10 !px-5 !py-2" disabled={pending}>{pending ? "Saving…" : "Save rate"}</button>
+      </div>
+      <Result state={state} />
+    </form>
+  );
+}

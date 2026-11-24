@@ -7,7 +7,7 @@ import { requireUser, canAccessBug } from "@/lib/auth";
 import { addBugComment, addManualTime, deleteBug, updateBug } from "@/lib/portal-actions";
 import { BUG_PIPELINE, BUG_STATUSES, BUG_STATUS_LABEL, PRIORITIES, fmtDuration, fmtMoney } from "@/lib/portal-config";
 import { ref, timeAgo } from "@/components/dash/ui";
-import { BugStatusBadge, Pipeline, PriorityBadge, WorkingNow } from "@/components/dash/portal-ui";
+import { BugStatusBadge, Pipeline, PriorityBadge, WorkStatus, WorkingNow } from "@/components/dash/portal-ui";
 import { TimerControl } from "@/components/dash/TimerControl";
 import { ManualTimeForm } from "@/components/dash/PortalForms";
 import { TimeTable } from "@/components/dash/TimeTable";
@@ -112,6 +112,7 @@ export default async function BugDetail({ params }: { params: Promise<{ id: stri
         </div>
 
         <div className="order-1 space-y-6 lg:order-2">
+          {user.role === "USER" && <WorkStatus entries={entries} now={now} />}
           {canTime && <TimerControl running={running} projectId={bug.projectId} bugId={bug.id} title="Work on this bug" admin={isAdmin} />}
           {canTime && (
             <details className="card p-5">
