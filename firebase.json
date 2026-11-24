@@ -1,0 +1,14 @@
+{
+  "apphosting": [
+    {
+      "backendId": "nathora-web",
+      "rootDir": "/",
+      "alwaysDeployFromSource": true,
+      "ignore": ["node_modules", ".git", ".next", "firebase-debug.log", "firebase-debug.*.log", "functions", "prisma", ".env", ".env.local", "*.db"]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

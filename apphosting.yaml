@@ -1,0 +1,46 @@
+# Firebase App Hosting settings for the live site.
+runConfig:
+  minInstances: 0      # scale to zero when idle (keeps cost near zero)
+  maxInstances: 2
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+env:
+  - variable: NEXT_PUBLIC_PHONE
+    value: "+918113838138"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_WHATSAPP
+    value: "918113838138"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_EMAIL
+    value: "nathoratechnologies@gmail.com"
+    availability: [BUILD, RUNTIME]
+
+  # First admin: created automatically the first time you sign in with these.
+  - variable: ADMIN_EMAIL
+    value: "nathoratechnologies@gmail.com"
+    availability: [RUNTIME]
+  - variable: ADMIN_PASSWORD
+    secret: admin-password
+    availability: [RUNTIME]
+  - variable: AUTH_SECRET
+    secret: auth-secret
+    availability: [RUNTIME]
+
+  # WhatsApp auto-messages: number that receives new-enquiry alerts.
+  - variable: WHATSAPP_ADMIN_NUMBER
+    value: "918113838138"
+    availability: [RUNTIME]
+  # When you have Meta WhatsApp Cloud API keys, store them as secrets and uncomment:
+  #   firebase apphosting:secrets:set whatsapp-token
+  #   firebase apphosting:secrets:set whatsapp-phone-number-id
+  # - variable: WHATSAPP_TOKEN
+  #   secret: whatsapp-token
+  #   availability: [RUNTIME]
+  # - variable: WHATSAPP_PHONE_NUMBER_ID
+  #   secret: whatsapp-phone-number-id
+  #   availability: [RUNTIME]
+  # - variable: WHATSAPP_TEMPLATE_NAME
+  #   value: "hello_world"
+  #   availability: [RUNTIME]
