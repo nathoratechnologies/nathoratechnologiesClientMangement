@@ -18,7 +18,11 @@ import {
   Users,
   MessagesSquare,
   Plus,
+  Check,
+  ExternalLink,
 } from "lucide-react";
+import Image from "next/image";
+import { PROJECTS } from "@/lib/site";
 import { Reveal, SpotlightCard, Stagger, StaggerItem } from "../motion";
 
 function Heading({ eyebrow, title, sub }: { eyebrow: string; title: React.ReactNode; sub?: string }) {
@@ -58,6 +62,62 @@ export function Services() {
                 </div>
                 <h3 className="font-display text-xl font-semibold">{s.title}</h3>
                 <p className="mt-3 leading-relaxed text-mist">{s.text}</p>
+              </SpotlightCard>
+            </StaggerItem>
+          ))}
+        </Stagger>
+      </div>
+    </section>
+  );
+}
+
+export function Projects() {
+  return (
+    <section id="work" className="relative py-24 sm:py-32">
+      <div className="mx-auto max-w-7xl px-5 sm:px-8">
+        <Heading
+          eyebrow="Our work"
+          title={<>Projects we&apos;ve <span className="text-gold-gradient">built and launched</span></>}
+          sub="Real products, live today and used by real customers."
+        />
+        <Stagger className="grid gap-6 lg:grid-cols-2">
+          {PROJECTS.map((p) => (
+            <StaggerItem key={p.name}>
+              <SpotlightCard className="group flex h-full flex-col overflow-hidden">
+                <div className={`relative flex h-56 items-center justify-center overflow-hidden bg-gradient-to-br ${p.logoBg}`}>
+                  <Image
+                    src={p.logo}
+                    alt={`${p.name} logo`}
+                    width={176}
+                    height={176}
+                    className="h-44 w-44 rounded-3xl object-cover shadow-2xl transition-transform duration-500 group-hover:scale-105"
+                  />
+                </div>
+                <div className="flex flex-1 flex-col p-7">
+                  <p className="text-xs font-semibold tracking-[0.2em] text-gold-500 uppercase">{p.type}</p>
+                  <h3 className="font-display mt-2 text-2xl font-semibold">
+                    {p.name} <span className="text-lg font-normal text-mist">· {p.localName}</span>
+                  </h3>
+                  <p className="mt-3 leading-relaxed text-mist">{p.description}</p>
+                  <ul className="mt-5 grid gap-2 sm:grid-cols-2">
+                    {p.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2 text-sm text-white/85">
+                        <Check size={16} className="mt-0.5 shrink-0 text-gold-400" aria-hidden="true" />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  <ul className="mt-5 flex flex-wrap gap-2" aria-label="Technologies">
+                    {p.tech.map((t) => (
+                      <li key={t} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-mist">
+                        {t}
+                      </li>
+                    ))}
+                  </ul>
+                  <a href={p.url} target="_blank" rel="noopener noreferrer" className="btn-gold mt-7 self-start !py-2.5 text-sm">
+                    Visit live site <ExternalLink size={16} aria-hidden="true" />
+                  </a>
+                </div>
               </SpotlightCard>
             </StaggerItem>
           ))}

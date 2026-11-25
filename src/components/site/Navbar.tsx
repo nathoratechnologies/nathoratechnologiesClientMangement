@@ -8,6 +8,7 @@ import { Logo } from "../Logo";
 
 const links = [
   { href: "#services", label: "Services" },
+  { href: "#work", label: "Our work" },
   { href: "#process", label: "Process" },
   { href: "#why", label: "Why us" },
   { href: "#faq", label: "FAQ" },

@@ -3,7 +3,7 @@ import { getUser } from "@/lib/auth";
 import { site, waLink, SERVICES } from "@/lib/site";
 import { Navbar } from "@/components/site/Navbar";
 import { Hero } from "@/components/site/Hero";
-import { Services, TechMarquee, Process, WhyUs, FAQ } from "@/components/site/Sections";
+import { Services, Projects, TechMarquee, Process, WhyUs, FAQ } from "@/components/site/Sections";
 import { Contact } from "@/components/site/Contact";
 import { Footer } from "@/components/site/Footer";
 import { FloatingContact } from "@/components/site/FloatingContact";
@@ -42,6 +42,7 @@ export default function Home() {
         <Hero phone={site.phone} whatsappHref={wa} />
         <TechMarquee />
         <Services />
+        <Projects />
         <Process />
         <WhyUs />
         <FAQ />

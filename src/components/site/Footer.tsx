@@ -15,6 +15,7 @@ export function Footer({ phone, email }: { phone: string; email: string }) {
           <h3 className="font-display mb-4 font-semibold">Company</h3>
           <ul className="space-y-2 text-mist">
             <li><a href="#services" className="hover:text-gold-400">Services</a></li>
+            <li><a href="#work" className="hover:text-gold-400">Our work</a></li>
             <li><a href="#process" className="hover:text-gold-400">Process</a></li>
             <li><a href="#faq" className="hover:text-gold-400">FAQ</a></li>
             <li><Link href="/login" className="hover:text-gold-400">Client login</Link></li>

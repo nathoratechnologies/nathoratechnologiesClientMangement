@@ -16,7 +16,35 @@ export const SERVICES = [
   "Maintenance & Support",
 ] as const;
 
-export const STATUSES = ["NEW", "IN_PROGRESS", "QUOTED", "WON", "CLOSED"] as const;
+/** Portfolio shown in the "Our work" section. Add a new object here to show another project. */
+export const PROJECTS = [
+  {
+    name: "Gramaseva",
+    localName: "ഗ്രാമസേവ",
+    type: "Village services app · Web + Android (PWA)",
+    description:
+      "A village services platform: find local workers like plumbers, electricians and coconut climbers, book an auto or car, and read village news. One codebase runs the website, the installable phone app and the coordinator admin panel.",
+    features: ["Worker & ride booking", "Phone OTP and WhatsApp login", "Malayalam & English", "Coordinator admin panel"],
+    tech: ["React", "TypeScript", "Firebase", "PWA", "Leaflet maps"],
+    url: "https://gramaseva-b2724.web.app",
+    logo: "/projects/gramaseva.png",
+    logoBg: "from-[#2f7d3a] to-[#1b4d24]",
+  },
+  {
+    name: "Thilakkam Lifestyle Store",
+    localName: "തിളക്കം",
+    type: "E-commerce store · Web",
+    description:
+      "An online store for fashion ornaments. Customers browse, add to bag and send their order straight to WhatsApp, while staff and the owner manage orders, stock and products from a dashboard.",
+    features: ["Order on WhatsApp", "Customer order tracking", "Stock & product management", "Customer, staff and admin logins"],
+    tech: ["React", "Vite", "Firebase Auth", "Firestore"],
+    url: "https://thilakkam-store.web.app",
+    logo: "/projects/thilakkam.png",
+    logoBg: "from-[#3a1834] to-[#2b1226]",
+  },
+] as const;
+
+export const STATUSES =["NEW", "IN_PROGRESS", "QUOTED", "WON", "CLOSED"] as const;
 
 export const STATUS_LABEL: Record<string, string> = {
   NEW: "New",
