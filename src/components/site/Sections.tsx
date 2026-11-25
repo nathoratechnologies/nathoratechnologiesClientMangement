@@ -80,7 +80,7 @@ export function Projects() {
           title={<>Projects we&apos;ve <span className="text-gold-gradient">built and launched</span></>}
           sub="Real products, live today and used by real customers."
         />
-        <Stagger className="grid gap-6 lg:grid-cols-2">
+        <Stagger className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {PROJECTS.map((p) => (
             <StaggerItem key={p.name}>
               <SpotlightCard className="group flex h-full flex-col overflow-hidden">
@@ -99,7 +99,7 @@ export function Projects() {
                     {p.name} <span className="text-lg font-normal text-mist">· {p.localName}</span>
                   </h3>
                   <p className="mt-3 leading-relaxed text-mist">{p.description}</p>
-                  <ul className="mt-5 grid gap-2 sm:grid-cols-2">
+                  <ul className="mt-5 grid gap-2">
                     {p.features.map((f) => (
                       <li key={f} className="flex items-start gap-2 text-sm text-white/85">
                         <Check size={16} className="mt-0.5 shrink-0 text-gold-400" aria-hidden="true" />

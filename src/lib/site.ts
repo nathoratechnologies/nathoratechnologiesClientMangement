@@ -42,6 +42,18 @@ export const PROJECTS = [
     logo: "/projects/thilakkam.png",
     logoBg: "from-[#3a1834] to-[#2b1226]",
   },
+  {
+    name: "Kada Billing",
+    localName: "കട ബില്ലിംഗ്",
+    type: "Shop billing app · Web + Android",
+    description:
+      "Billing for small shops. Any shop can register, add staff with roles and bill from any phone or browser, with stock, purchases and daily to yearly reports.",
+    features: ["Tick-to-bill with PDF bills", "Stock & purchase tracking", "Daily to yearly reports", "Owner, admin and sales roles"],
+    tech: ["JavaScript", "Capacitor (Android)", "Firebase", "jsPDF"],
+    url: "https://kada-billing-upas.web.app",
+    logo: "/projects/kada-billing.png",
+    logoBg: "from-[#2f8a47] to-[#1d5a2e]",
+  },
 ] as const;
 
 export const STATUSES =["NEW", "IN_PROGRESS", "QUOTED", "WON", "CLOSED"] as const;
