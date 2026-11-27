@@ -17,6 +17,9 @@ A premium animated website that also installs on phones as an app (PWA). It has 
 5. Press **Start timer** on a project or bug, then **Stop** when done. Each person runs one timer at a time, and starting a new one stops the old one. Starting work on a bug moves it to *Developing* and shows a green **Working now** badge that the client can see too.
 6. **Hours & billing** on the project shows the total hours, the rate and the amount (hours × rate). It counts up live, can be filtered by month and printed or saved as a PDF. Clients see the same report; staff see hours only. Forgotten timers can be added in **Settings › Add time manually**.
 
+7. **Payments.** When a client pays, open the project's **Payments** tab (or Dashboard › Payments, or the client's page) and choose **Record payment**: amount, date, UPI/bank/cash, reference and what it was for. The client sees every payment, the total paid and the balance (work done − paid, or "Paid in advance") on their Payments page and on the project.
+8. **Quotations, invoices and receipts.** Upload them in the project's **Documents** tab and choose the **Type**, or use **Upload a quotation** on the Payments tab. The client finds them on the project and under **Payments**. PDFs have a **View** button that opens them in the browser.
+
 Every new enquiry automatically sends a **WhatsApp confirmation to the customer** and a **WhatsApp alert to the admin** (via the WhatsApp Cloud API).
 
 ## Live site

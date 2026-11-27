@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bug, Clock, FolderKanban, Wallet, Phone, Mail, Pencil } from "lucide-react";
+import { ArrowLeft, Bug, Clock, FolderKanban, Wallet, Phone, Mail, Pencil, IndianRupee } from "lucide-react";
 import { getUserById, isPlaceholderEmail } from "@/lib/db";
-import { listBugs, listEntries, listProjects, totalMs, requestTime } from "@/lib/portal";
+import { listBugs, listEntries, listPayments, listProjects, totalMs, requestTime } from "@/lib/portal";
 import { requireUser } from "@/lib/auth";
-import { adminResetPassword, createProject } from "@/lib/portal-actions";
+import { addPayment, adminResetPassword, createProject } from "@/lib/portal-actions";
 import { adminUpdateUser } from "@/lib/actions";
-import { OPEN_BUG_STATUSES, amountFor, fmtDuration, fmtMoney } from "@/lib/portal-config";
+import { OPEN_BUG_STATUSES, amountFor, fmtDuration, fmtMoney, fmtTotals, sumByCurrency } from "@/lib/portal-config";
+import { todayIST } from "@/lib/bill";
+import { PaymentList } from "@/components/dash/money-ui";
 import { BugList, ProjectList, Stat } from "@/components/dash/portal-ui";
-import { ProjectForm, ResetPasswordForm } from "@/components/dash/PortalForms";
+import { PaymentForm, ProjectForm, ResetPasswordForm } from "@/components/dash/PortalForms";
 
 export default async function ClientDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,7 +18,12 @@ export default async function ClientDetail({ params }: { params: Promise<{ id: s
   const client = await getUserById(id);
   if (!client || client.role !== "USER") notFound();
 
-  const [projects, bugs, entries] = await Promise.all([listProjects({ clientId: id }), listBugs({ clientId: id }), listEntries({ clientId: id })]);
+  const [projects, bugs, entries, payments] = await Promise.all([
+    listProjects({ clientId: id }),
+    listBugs({ clientId: id }),
+    listEntries({ clientId: id }),
+    listPayments({ clientId: id }),
+  ]);
   const now = await requestTime();
   const openBugs = bugs.filter((b) => OPEN_BUG_STATUSES.includes(b.status));
   const openByProject = Object.fromEntries(projects.map((p) => [p.id, openBugs.filter((b) => b.projectId === p.id).length]));
@@ -43,11 +50,12 @@ export default async function ClientDetail({ params }: { params: Promise<{ id: s
         </p>
       </div>
 
-      <div className="mb-10 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-10 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Stat icon={FolderKanban} label="Projects" value={projects.length} />
         <Stat icon={Bug} label="Open bugs" value={openBugs.length} sub={`${bugs.length} reported in total`} />
         <Stat icon={Clock} label="Hours worked" value={fmtDuration(totalMs(entries, now))} />
         <Stat icon={Wallet} label="Amount" value={amountText} />
+        <Stat icon={IndianRupee} label="Paid" value={fmtTotals(sumByCurrency(payments))} sub={`${payments.length} payment${payments.length === 1 ? "" : "s"}`} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
@@ -57,12 +65,23 @@ export default async function ClientDetail({ params }: { params: Promise<{ id: s
             <ProjectList items={projects} showClient={false} openBugs={openByProject} />
           </section>
           <section>
+            <h2 className="font-display mb-4 text-lg font-semibold">Payments received</h2>
+            <PaymentList items={payments} showProject canDelete />
+          </section>
+          <section>
             <h2 className="font-display mb-4 text-lg font-semibold">Bugs reported</h2>
             <BugList items={bugs} />
           </section>
         </div>
 
         <div className="space-y-6">
+          {projects.length > 0 && (
+            <div className="card p-6">
+              <h2 className="font-display mb-5 font-semibold">Record a payment</h2>
+              <PaymentForm action={addPayment.bind(null, null)} today={todayIST()} projects={projects.map((p) => ({ id: p.id, label: p.name }))} />
+            </div>
+          )}
+
           <div className="card p-6">
             <h2 className="font-display mb-5 font-semibold">Add a project</h2>
             <ProjectForm action={createProject.bind(null, client.id)} submit="Create project" />

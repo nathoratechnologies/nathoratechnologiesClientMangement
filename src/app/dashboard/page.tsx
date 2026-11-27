@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Inbox, Bug, Clock, Building2, FolderKanban, Timer, PlusCircle } from "lucide-react";
+import { Inbox, Bug, Clock, Building2, FolderKanban, Timer, PlusCircle, IndianRupee } from "lucide-react";
 import { listEnquiries, listUsers } from "@/lib/db";
-import { listBugs, listEntries, listProjects, listRunning, totalMs, requestTime } from "@/lib/portal";
+import { listBugs, listEntries, listPayments, listProjects, listRunning, totalMs, requestTime } from "@/lib/portal";
 import { requireUser } from "@/lib/auth";
-import { OPEN_BUG_STATUSES, fmtDuration } from "@/lib/portal-config";
+import { OPEN_BUG_STATUSES, fmtDuration, fmtTotals, sumByCurrency } from "@/lib/portal-config";
+import { PaymentList } from "@/components/dash/money-ui";
 import { EnquiryList, PageTitle } from "@/components/dash/ui";
 import { BugList, ProjectList, Stat } from "@/components/dash/portal-ui";
 import { LiveClock } from "@/components/dash/Live";
@@ -41,18 +42,24 @@ export default async function Overview() {
   const first = user.name.split(" ")[0];
 
   if (role === "USER") {
+    const payments = await listPayments({ clientId: user.id });
     return (
       <>
-        <PageTitle title={`Hello, ${first}`} sub="Your projects, bug reports and hours in one place" />
+        <PageTitle title={`Hello, ${first}`} sub="Your projects, bug reports, hours and payments in one place" />
         <div className="mb-10 grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Stat icon={FolderKanban} label="Projects" value={projects.length} />
           <Stat icon={Bug} label="Open bugs" value={openBugs.length} />
           <Stat icon={Clock} label="Hours worked for you" value={fmtDuration(totalMs(entries, now))} />
-          <Stat icon={Inbox} label="Enquiries" value={enquiries.length} />
+          <Stat icon={IndianRupee} label="Paid" value={fmtTotals(sumByCurrency(payments))} sub={`${payments.length} payment${payments.length === 1 ? "" : "s"}`} />
         </div>
         <Section title="My projects" href="/dashboard/projects">
           <ProjectList items={projects} showClient={false} openBugs={openByProject} />
         </Section>
+        {payments.length > 0 && (
+          <Section title="Recent payments" href="/dashboard/payments">
+            <PaymentList items={payments.slice(0, 3)} showProject={projects.length > 1} />
+          </Section>
+        )}
         {bugs.length > 0 && (
           <Section title="My bug reports" href="/dashboard/bugs">
             <BugList items={bugs.slice(0, 5)} />

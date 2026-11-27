@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
-import { LayoutDashboard, Inbox, Users, MessageCircle, UserCircle, LogOut, Globe, FolderKanban, Bug, Timer, Building2 } from "lucide-react";
+import { LayoutDashboard, Inbox, Users, MessageCircle, UserCircle, LogOut, Globe, FolderKanban, Bug, Timer, Building2, Wallet } from "lucide-react";
 import { Logo } from "../Logo";
 import { logout } from "@/lib/actions";
 
@@ -12,6 +12,7 @@ const NAV = {
     { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
     { href: "/dashboard/projects", label: "Projects", icon: FolderKanban },
     { href: "/dashboard/bugs", label: "Bugs", icon: Bug },
+    { href: "/dashboard/payments", label: "Payments", icon: Wallet },
     { href: "/dashboard/enquiries", label: "Enquiries", icon: Inbox },
     { href: "/dashboard/profile", label: "Profile", icon: UserCircle },
   ],
@@ -28,6 +29,7 @@ const NAV = {
     { href: "/dashboard/projects", label: "Projects", icon: FolderKanban },
     { href: "/dashboard/bugs", label: "Bugs", icon: Bug },
     { href: "/dashboard/time", label: "Time", icon: Timer },
+    { href: "/dashboard/payments", label: "Payments", icon: Wallet },
     { href: "/dashboard/enquiries", label: "Enquiries", icon: Inbox },
     { href: "/dashboard/users", label: "Users", icon: Users },
     { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle },

@@ -145,14 +145,15 @@ export async function updateProject(id: string, data: Partial<Pick<Project, "nam
   await projects().doc(id).update({ ...data, updatedAt: new Date() });
 }
 
-/** Removes the project with its updates, bugs (and their notes), documents and time entries. */
+/** Removes the project with its updates, bugs (and their notes), documents, payments and time entries. */
 export async function deleteProject(id: string) {
-  const [b, t, f] = await Promise.all([
+  const [b, t, f, pay] = await Promise.all([
     bugs().where("projectId", "==", id).get(),
     entries().where("projectId", "==", id).get(),
     firestore.collection("files").where("projectId", "==", id).get(),
+    firestore.collection("payments").where("projectId", "==", id).get(),
   ]);
-  await Promise.all([...b.docs, ...f.docs].map((d) => firestore.recursiveDelete(d.ref)));
+  await Promise.all([...b.docs, ...f.docs, ...pay.docs].map((d) => firestore.recursiveDelete(d.ref)));
   for (let i = 0; i < t.docs.length; i += 400) {
     const batch = firestore.batch();
     t.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
@@ -358,6 +359,8 @@ export type ProjectFile = {
   size: number;
   chunks: number;
   note: string;
+  /** DOCUMENT, QUOTATION, INVOICE or RECEIPT (older files have none and count as DOCUMENT). */
+  category: string;
   status: "UPLOADING" | "READY";
   uploadedById: string;
   uploadedByName: string;
@@ -367,7 +370,10 @@ export type ProjectFile = {
 
 const files = () => firestore.collection("files");
 const fileChunks = (id: string) => files().doc(id).collection("chunks");
-const fileOf = (d: DocumentSnapshot) => fromDoc<ProjectFile>(d, ["createdAt"]);
+const fileOf = (d: DocumentSnapshot): ProjectFile => {
+  const f = fromDoc<ProjectFile>(d, ["createdAt"]);
+  return { ...f, category: f.category || "DOCUMENT" };
+};
 
 /** Who may see a project: admin, its client, or staff with a bug assigned on it. */
 export async function canViewProject(user: { id: string; role: string }, p: { id: string; clientId: string }) {
@@ -378,6 +384,14 @@ export async function canViewProject(user: { id: string; role: string }, p: { id
 
 export async function listFiles(projectId: string) {
   return (await files().where("projectId", "==", projectId).get()).docs
+    .map(fileOf)
+    .filter((f) => f.status === "READY")
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+/** Every finished document across a client's projects. */
+export async function listClientFiles(clientId: string) {
+  return (await files().where("clientId", "==", clientId).get()).docs
     .map(fileOf)
     .filter((f) => f.status === "READY")
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -421,4 +435,53 @@ export async function renameClientProjects(clientId: string, clientName: string)
   const batch = firestore.batch();
   q.docs.forEach((d) => batch.update(d.ref, { clientName }));
   await batch.commit();
+}
+
+/* ---------- Payments received from clients ---------- */
+
+export type Payment = {
+  id: string;
+  projectId: string;
+  projectName: string;
+  clientId: string;
+  amount: number;
+  currency: string;
+  /** Day the money was received. */
+  paidOn: Date;
+  method: string;
+  reference: string;
+  note: string;
+  recordedByName: string;
+  createdAt: Date;
+};
+
+const payments = () => firestore.collection("payments");
+const paymentOf = (d: DocumentSnapshot): Payment => {
+  const p = fromDoc<Payment>(d, ["paidOn", "createdAt"]);
+  return { ...p, amount: Number(p.amount) || 0, currency: p.currency || "INR" };
+};
+
+export async function listPayments(scope: { projectId?: string; clientId?: string } = {}) {
+  let q: FirebaseFirestore.Query = payments();
+  if (scope.projectId) q = q.where("projectId", "==", scope.projectId);
+  else if (scope.clientId) q = q.where("clientId", "==", scope.clientId);
+  return (await q.get()).docs
+    .map(paymentOf)
+    .sort((a, b) => b.paidOn.getTime() - a.paidOn.getTime() || b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+export async function getPayment(id: string) {
+  const d = await payments().doc(id).get();
+  return d.exists ? paymentOf(d) : null;
+}
+
+export async function addPayment(p: Omit<Payment, "id" | "createdAt">) {
+  const now = new Date();
+  const ref = await payments().add({ ...p, createdAt: now });
+  await projects().doc(p.projectId).update({ updatedAt: now });
+  return ref.id;
+}
+
+export async function deletePayment(id: string) {
+  await payments().doc(id).delete();
 }

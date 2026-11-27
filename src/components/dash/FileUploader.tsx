@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, Loader2 } from "lucide-react";
+import { FILE_CATEGORIES, FILE_CATEGORY_LABEL } from "@/lib/portal-config";
 
 const MAX_MB = 25;
 
@@ -13,11 +14,15 @@ async function call(url: string, init: RequestInit) {
   return json;
 }
 
-/** Uploads files in chunks to /api/projects/[id]/files with a progress bar. */
-export function FileUploader({ projectId }: { projectId: string }) {
+/**
+ * Uploads files in chunks to /api/projects/[id]/files with a progress bar.
+ * With `pickCategory` (admin), files can be filed as a quotation, invoice or receipt.
+ */
+export function FileUploader({ projectId, pickCategory, defaultCategory = "DOCUMENT" }: { projectId: string; pickCategory?: boolean; defaultCategory?: string }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [note, setNote] = useState("");
+  const [category, setCategory] = useState(defaultCategory);
   const [busy, setBusy] = useState<{ name: string; pct: number } | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -33,7 +38,7 @@ export function FileUploader({ projectId }: { projectId: string }) {
         const { id, chunks, chunkSize } = await call(`/api/projects/${projectId}/files`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: file.name, type: file.type, size: file.size, note }),
+          body: JSON.stringify({ name: file.name, type: file.type, size: file.size, note, category }),
         });
         for (let i = 0; i < chunks; i++) {
           await call(`/api/files/${id}?i=${i}`, { method: "PUT", body: file.slice(i * chunkSize, (i + 1) * chunkSize) });
@@ -55,9 +60,17 @@ export function FileUploader({ projectId }: { projectId: string }) {
 
   return (
     <div className="grid gap-4">
+      {pickCategory && (
+        <div>
+          <label className="label" htmlFor="f-cat">Type</label>
+          <select id="f-cat" value={category} onChange={(e) => setCategory(e.target.value)} className="input" disabled={!!busy}>
+            {FILE_CATEGORIES.map((c) => <option key={c} value={c}>{FILE_CATEGORY_LABEL[c]}</option>)}
+          </select>
+        </div>
+      )}
       <div>
         <label className="label" htmlFor="f-note">Note (optional)</label>
-        <input id="f-note" value={note} onChange={(e) => setNote(e.target.value)} className="input" placeholder="e.g. Logo files, content for the About page" disabled={!!busy} />
+        <input id="f-note" value={note} onChange={(e) => setNote(e.target.value)} className="input" placeholder={category === "QUOTATION" ? "e.g. NT-Q-2026-001 · Phase 1 setup & deployment" : "e.g. Logo files, content for the About page"} disabled={!!busy} />
       </div>
       <label
         className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-8 text-center transition ${busy ? "border-gold-500/50" : "border-white/15 hover:border-gold-500/60 hover:bg-white/[0.03]"}`}

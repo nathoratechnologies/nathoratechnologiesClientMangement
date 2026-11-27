@@ -13,10 +13,13 @@ import {
   BUG_STATUSES,
   BUG_STATUS_LABEL,
   CURRENCIES,
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABEL,
   PRIORITIES,
   PROJECT_STATUSES,
   PROJECT_STATUS_LABEL,
   UPDATE_KINDS,
+  fmtMoney,
 } from "./portal-config";
 import type { FormState } from "./actions";
 
@@ -419,6 +422,57 @@ export async function deleteFile(fileId: string) {
   const f = await portal.getFile(fileId);
   if (!f || (me.role !== "ADMIN" && f.uploadedById !== me.id)) return;
   await portal.deleteFile(fileId);
+  refresh();
+}
+
+/* ---------- Payments (admin records, client sees) ---------- */
+
+/**
+ * Record money received from a client. The project comes from the bound id,
+ * or from a "projectId" field when the form lets the admin pick one.
+ */
+export async function addPayment(boundProjectId: string | null, _: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser(["ADMIN"]);
+  const project = await portal.getProject(boundProjectId ?? str(f, "projectId"));
+  if (!project) return { error: "Choose the project this payment is for" };
+
+  const raw = str(f, "amount").replace(/[,\s₹$]/g, "");
+  const amount = Math.round(Number(raw) * 100) / 100;
+  if (!raw || !Number.isFinite(amount) || amount <= 0 || amount > 100_000_000) return { error: "Enter the amount received, e.g. 14400" };
+
+  const date = str(f, "paidOn") || todayIST();
+  const paidOn = new Date(`${date}T12:00:00${IST}`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(paidOn.getTime())) return { error: "Enter a valid date" };
+  if (paidOn.getTime() > Date.now() + 86_400_000) return { error: "The payment date is in the future" };
+
+  const method = (PAYMENT_METHODS as readonly string[]).includes(str(f, "method")) ? str(f, "method") : "OTHER";
+  const note = str(f, "note").slice(0, 300);
+  await portal.addPayment({
+    projectId: project.id,
+    projectName: project.name,
+    clientId: project.clientId,
+    amount,
+    currency: project.currency,
+    paidOn,
+    method,
+    reference: str(f, "reference").slice(0, 120),
+    note,
+    recordedByName: me.name,
+  });
+  const money = fmtMoney(amount, project.currency);
+  await portal.addUpdate(project.id, {
+    kind: "NOTE",
+    title: `Payment received: ${money}`,
+    body: [`${PAYMENT_METHOD_LABEL[method]} · ${date}`, note].filter(Boolean).join("\n"),
+    authorName: me.name,
+  });
+  refresh();
+  return { ok: true, message: `${money} recorded for ${project.name}. ${project.clientName} can see it now.` };
+}
+
+export async function deletePayment(paymentId: string) {
+  await requireUser(["ADMIN"]);
+  await portal.deletePayment(paymentId);
   refresh();
 }
 

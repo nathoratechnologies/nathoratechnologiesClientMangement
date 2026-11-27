@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUser } from "@/lib/auth";
 import { FILE_CHUNK, FILE_MAX, canViewProject, createFile, getProject } from "@/lib/portal";
+import { FILE_CATEGORIES } from "@/lib/portal-config";
 
 /** Step 1 of an upload: register the file and get its id + chunk size. */
 export async function POST(req: NextRequest, ctx: RouteContext<"/api/projects/[id]/files">) {
@@ -10,12 +11,15 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/projects/[i
   const project = await getProject(id);
   if (!project || !(await canViewProject(user, project))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
-  const b = (await req.json().catch(() => ({}))) as { name?: string; type?: string; size?: number; note?: string };
+  const b = (await req.json().catch(() => ({}))) as { name?: string; type?: string; size?: number; note?: string; category?: string };
   const name = String(b.name ?? "").trim().replace(/[\/\r\n"]+/g, "_").slice(0, 180);
   const size = Number(b.size);
   if (!name) return NextResponse.json({ error: "File has no name" }, { status: 400 });
   if (!Number.isFinite(size) || size <= 0) return NextResponse.json({ error: "File is empty" }, { status: 400 });
   if (size > FILE_MAX) return NextResponse.json({ error: `Files can be up to ${FILE_MAX / 1024 / 1024} MB` }, { status: 413 });
+
+  // Only the admin files quotations, invoices and receipts; everyone else uploads plain documents.
+  const category = user.role === "ADMIN" && (FILE_CATEGORIES as readonly string[]).includes(String(b.category)) ? String(b.category) : "DOCUMENT";
 
   const file = await createFile({
     projectId: project.id,
@@ -24,6 +28,7 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/projects/[i
     type: String(b.type ?? "").slice(0, 120) || "application/octet-stream",
     size,
     note: String(b.note ?? "").trim().slice(0, 300),
+    category,
     uploadedById: user.id,
     uploadedByName: user.name,
     uploaderRole: user.role,

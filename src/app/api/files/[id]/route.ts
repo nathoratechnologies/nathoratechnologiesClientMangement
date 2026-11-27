@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getUser } from "@/lib/auth";
+import { FILE_CATEGORY_LABEL } from "@/lib/portal-config";
 import { FILE_CHUNK, addUpdate, canViewProject, completeFile, getFile, getProject, putFileChunk, readFile } from "@/lib/portal";
 import { notifyAdmin } from "@/lib/whatsapp";
 
@@ -38,15 +39,18 @@ export async function POST(_req: NextRequest, ctx: RouteContext<"/api/files/[id]
   if (!(await completeFile(g.file))) return fail("Some parts of the file are missing. Please upload it again.", 400);
   const project = await getProject(g.file.projectId);
   if (project) {
-    await addUpdate(project.id, { kind: "NOTE", title: `Document shared: ${g.file.name}`, body: g.file.note, authorName: g.user.name });
+    await addUpdate(project.id, { kind: "NOTE", title: `${FILE_CATEGORY_LABEL[g.file.category] ?? "Document"} shared: ${g.file.name}`, body: g.file.note, authorName: g.user.name });
     if (g.user.role === "USER") await notifyAdmin(`${g.user.name} uploaded a document on ${project.name}: ${g.file.name}`);
   }
   revalidatePath("/dashboard", "layout");
   return NextResponse.json({ ok: true });
 }
 
-/** Download (always as an attachment, so nothing uploaded can run as a page on this site). */
-export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]">) {
+/**
+ * Download. Files are sent as attachments so nothing uploaded can run as a page on this site;
+ * only a PDF may open in the browser's PDF viewer, with ?view=1.
+ */
+export async function GET(req: NextRequest, ctx: RouteContext<"/api/files/[id]">) {
   const { id } = await ctx.params;
   const user = await getUser();
   if (!user) return fail("Please sign in", 401);
@@ -56,11 +60,13 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]"
 
   const body = await readFile(id);
   const risky = /html|svg|xml|javascript/i.test(file.type);
+  const pdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  const inline = pdf && req.nextUrl.searchParams.get("view") === "1";
   return new NextResponse(new Uint8Array(body), {
     headers: {
-      "Content-Type": risky ? "application/octet-stream" : file.type,
+      "Content-Type": inline ? "application/pdf" : risky ? "application/octet-stream" : file.type,
       "Content-Length": String(body.length),
-      "Content-Disposition": `attachment; filename="${file.name.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${file.name.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(file.name)}`,
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, no-store",
     },

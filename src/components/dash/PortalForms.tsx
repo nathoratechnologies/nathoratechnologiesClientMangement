@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import type { FormState } from "@/lib/actions";
 import { Loader2, Play } from "lucide-react";
 import { adminCreateClient, startTimer } from "@/lib/portal-actions";
-import { CURRENCIES, PRIORITIES, PROJECT_STATUSES, PROJECT_STATUS_LABEL, UPDATE_KINDS, UPDATE_KIND_LABEL } from "@/lib/portal-config";
+import { CURRENCIES, PAYMENT_METHODS, PAYMENT_METHOD_LABEL, PRIORITIES, PROJECT_STATUSES, PROJECT_STATUS_LABEL, UPDATE_KINDS, UPDATE_KIND_LABEL } from "@/lib/portal-config";
 
 type Action = (state: FormState, f: FormData) => Promise<FormState>;
 
@@ -307,6 +307,52 @@ export function RateForm({ action, rate, currency }: { action: Action; rate: num
         <button className="btn-gold !min-h-10 !px-5 !py-2" disabled={pending}>{pending ? "Saving…" : "Save rate"}</button>
       </div>
       <Result state={state} />
+    </form>
+  );
+}
+
+/** Record a payment received. Pass `projects` to let the admin choose which project it is for. */
+export function PaymentForm({ action, today, projects }: { action: Action; today: string; projects?: { id: string; label: string }[] }) {
+  const { state, run, pending, key } = useForm(action);
+  return (
+    <form action={run} className="grid gap-4" key={key}>
+      {projects && (
+        <div>
+          <label className="label" htmlFor="pay-project">Project</label>
+          <select id="pay-project" name="projectId" className="input" required defaultValue="">
+            <option value="" disabled>Choose a project</option>
+            {projects.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label" htmlFor="pay-amount">Amount received</label>
+          <input id="pay-amount" name="amount" inputMode="decimal" className="input" required placeholder="e.g. 14400" />
+        </div>
+        <div>
+          <label className="label" htmlFor="pay-date">Date</label>
+          <input id="pay-date" name="paidOn" type="date" className="input" defaultValue={today} max={today} required />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label" htmlFor="pay-method">Paid by</label>
+          <select id="pay-method" name="method" className="input" defaultValue="UPI">
+            {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="pay-ref">Reference (optional)</label>
+          <input id="pay-ref" name="reference" className="input" placeholder="UPI / UTR no." />
+        </div>
+      </div>
+      <div>
+        <label className="label" htmlFor="pay-note">What it is for (optional)</label>
+        <input id="pay-note" name="note" className="input" placeholder="e.g. Phase 1 advance (30%)" />
+      </div>
+      <Result state={state} />
+      <button className="btn-gold" disabled={pending}>{pending ? "Saving…" : "Record payment"}</button>
     </form>
   );
 }

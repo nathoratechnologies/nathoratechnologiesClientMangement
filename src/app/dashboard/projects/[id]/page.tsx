@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ExternalLink, Trash2, Sparkles, Wrench, Rocket, StickyNote, TrendingUp, FileText, Download } from "lucide-react";
+import { ArrowLeft, ExternalLink, Trash2, Sparkles, Wrench, Rocket, StickyNote, TrendingUp } from "lucide-react";
 import { listUsers } from "@/lib/db";
-import { getProject, groupHours, listBugs, listEntries, listFiles, listRunning, listUpdates, totalMs, requestTime } from "@/lib/portal";
+import { getProject, groupHours, listBugs, listEntries, listFiles, listPayments, listRunning, listUpdates, totalMs, requestTime } from "@/lib/portal";
 import { requireUser, ownsProject } from "@/lib/auth";
-import { addManualTime, deleteFile, deleteProject, sendDayBill, updateRate, deleteUpdate, postUpdate, reportBug, updateProject } from "@/lib/portal-actions";
+import { addManualTime, addPayment, deleteProject, sendDayBill, updateRate, deleteUpdate, postUpdate, reportBug, updateProject } from "@/lib/portal-actions";
 import {
   OPEN_BUG_STATUSES,
   PROJECT_PIPELINE,
@@ -16,7 +16,8 @@ import {
 } from "@/lib/portal-config";
 import { timeAgo } from "@/components/dash/ui";
 import { BugList, Pipeline, ProjectStatusBadge, Stat, Tabs, WorkStatus, WorkingNow } from "@/components/dash/portal-ui";
-import { ManualTimeForm, PostUpdateForm, ProjectForm, RateForm, ReportBugForm } from "@/components/dash/PortalForms";
+import { ManualTimeForm, PaymentForm, PostUpdateForm, ProjectForm, RateForm, ReportBugForm } from "@/components/dash/PortalForms";
+import { DocList, PaymentList } from "@/components/dash/money-ui";
 import { TimerControl } from "@/components/dash/TimerControl";
 import { TimeTable } from "@/components/dash/TimeTable";
 import { ConfirmButton, LiveTotal, PrintButton } from "@/components/dash/Live";
@@ -26,7 +27,6 @@ import { buildDayBill, todayIST } from "@/lib/bill";
 import { whatsAppConfigured } from "@/lib/whatsapp";
 
 const KIND_ICON: Record<string, typeof Sparkles> = { FEATURE: Sparkles, FIX: Wrench, IMPROVEMENT: TrendingUp, DEPLOYMENT: Rocket, NOTE: StickyNote };
-const fmtSize = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const monthKey = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(0, 7);
 const monthLabel = (k: string) => new Date(`${k}-15T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
@@ -36,7 +36,13 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
   const project = await getProject(id);
   if (!project) notFound();
 
-  const [bugs, entries, updates, docs] = await Promise.all([listBugs({ projectId: id }), listEntries({ projectId: id }), listUpdates(id), listFiles(id)]);
+  const [bugs, entries, updates, docs, payments] = await Promise.all([
+    listBugs({ projectId: id }),
+    listEntries({ projectId: id }),
+    listUpdates(id),
+    listFiles(id),
+    listPayments({ projectId: id }),
+  ]);
   const myBugs = bugs.filter((b) => b.assignedToId === user.id);
   const isAdmin = user.role === "ADMIN";
   const isStaff = user.role === "STAFF";
@@ -58,6 +64,7 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
     { key: "bugs", label: `Bugs (${openBugs.length} open)` },
     { key: "docs", label: `Documents (${docs.length})` },
     { key: "billing", label: showMoney ? "Hours & billing" : "Hours" },
+    ...(showMoney ? [{ key: "payments", label: `Payments (${payments.length})` }] : []),
     ...(isAdmin ? [{ key: "settings", label: "Settings" }] : []),
   ].map((t) => ({ ...t, href: `/dashboard/projects/${id}?tab=${t.key}` }));
   const tab = tabs.some((t) => t.key === tabParam) ? tabParam! : "overview";
@@ -70,8 +77,17 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
   const runningStarts = billed.filter((e) => !e.endedAt).map((e) => e.startedAt.toISOString());
   const people = groupHours(billed, (e) => [e.userId, e.userName], now);
   const allMs = totalMs(entries, now);
-  const billDay = day && /^d{4}-d{2}-d{2}$/.test(day) ? day : todayIST();
+  const billDay = day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : todayIST();
   const bill = isAdmin && tab === "billing" ? await buildDayBill(project, billDay) : null;
+
+  // Payments: what has been paid against the work done so far (hours × rate).
+  const paid = payments.filter((p) => p.currency === project.currency).reduce((s, p) => s + p.amount, 0);
+  const workAmount = amountFor(allMs, project.hourlyRate);
+  const balance = Math.round((workAmount - paid) * 100) / 100;
+  // Quotations first, then invoices and receipts, then everything else.
+  const CATEGORY_ORDER = ["QUOTATION", "INVOICE", "RECEIPT", "DOCUMENT"];
+  const sortedDocs = [...docs].sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category));
+  const quotations = docs.filter((d) => d.category === "QUOTATION");
 
   return (
     <>
@@ -201,42 +217,58 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
 
       {tab === "docs" && (
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-          {docs.length ? (
-            <ul className="card h-fit divide-y divide-white/5 overflow-hidden">
-              {docs.map((f) => (
-                <li key={f.id} className="flex items-center gap-3 px-5 py-4">
-                  <FileText size={20} className="shrink-0 text-gold-400" aria-hidden="true" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold">{f.name}</p>
-                    <p className="truncate text-xs text-mist">
-                      {fmtSize(f.size)} · {f.uploadedByName}
-                      {f.uploaderRole === "USER" ? " (client)" : ""} · {timeAgo(f.createdAt)}
-                    </p>
-                    {f.note && <p className="mt-1 text-sm text-mist">{f.note}</p>}
-                  </div>
-                  <a href={`/api/files/${f.id}`} className="btn-ghost !min-h-10 !px-3 !py-2 text-sm" download>
-                    <Download size={15} aria-hidden="true" /> <span className="hidden sm:inline">Download</span>
-                  </a>
-                  {(isAdmin || f.uploadedById === user.id) && (
-                    <form action={deleteFile.bind(null, f.id)}>
-                      <ConfirmButton message={`Delete ${f.name}?`} className="flex h-10 w-10 items-center justify-center rounded-full text-mist hover:bg-red-500/10 hover:text-red-200">
-                        <Trash2 size={15} aria-label="Delete document" />
-                      </ConfirmButton>
-                    </form>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="card h-fit p-10 text-center text-mist">No documents yet.</div>
-          )}
+          <DocList items={sortedDocs} me={user} />
           <div className="card h-fit p-6">
             <h2 className="font-display mb-1 font-semibold">Upload documents</h2>
             <p className="mb-5 text-sm text-mist">
-              {user.role === "USER" ? "Share anything we need for development: requirements, content, logos, credentials sheets, designs." : "Share files with the client (designs, reports, invoices)."}
+              {user.role === "USER"
+                ? "Share anything we need for development: requirements, content, logos, credentials sheets, designs."
+                : isAdmin
+                  ? "Share files with the client. Choose Quotation, Invoice or Receipt so the client finds them under Payments too."
+                  : "Share files with the client (designs, reports)."}
             </p>
-            <FileUploader projectId={id} />
+            <FileUploader projectId={id} pickCategory={isAdmin} />
           </div>
+        </div>
+      )}
+
+      {tab === "payments" && showMoney && (
+        <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <Stat label="Paid so far" value={<span className="text-emerald-300">{fmtMoney(paid, project.currency)}</span>} sub={`${payments.length} payment${payments.length === 1 ? "" : "s"}`} />
+              <Stat label="Work done" value={project.hourlyRate ? fmtMoney(workAmount, project.currency) : "—"} sub={`${fmtDuration(allMs)} × ${project.hourlyRate ? fmtMoney(project.hourlyRate, project.currency) : "rate not set"}`} />
+              {project.hourlyRate > 0 && (
+                <Stat
+                  label={balance > 0 ? "Balance due" : balance < 0 ? "Paid in advance" : "Balance"}
+                  value={<span className={balance > 0 ? "text-gold-300" : "text-emerald-300"}>{fmtMoney(Math.abs(balance), project.currency)}</span>}
+                  sub={balance < 0 ? "Will be adjusted against upcoming work" : "Work done − paid"}
+                />
+              )}
+            </div>
+            <section>
+              <h2 className="font-display mb-4 text-lg font-semibold">Payments received</h2>
+              <PaymentList items={payments} canDelete={isAdmin} />
+            </section>
+            <section>
+              <h2 className="font-display mb-4 text-lg font-semibold">Quotations</h2>
+              <DocList items={quotations} me={user} empty={isAdmin ? "No quotation uploaded. Use the form on the right, or Documents › Type: Quotation." : "No quotations shared yet."} />
+            </section>
+          </div>
+          {isAdmin && (
+            <div className="space-y-6">
+              <div className="card h-fit p-6">
+                <h2 className="font-display mb-1 font-semibold">Record a payment</h2>
+                <p className="mb-5 text-sm text-mist">Money received from {project.clientName}. They see it here right away.</p>
+                <PaymentForm action={addPayment.bind(null, id)} today={todayIST()} />
+              </div>
+              <div className="card h-fit p-6">
+                <h2 className="font-display mb-1 font-semibold">Upload a quotation</h2>
+                <p className="mb-5 text-sm text-mist">PDF quotations open right in the client&apos;s browser.</p>
+                <FileUploader projectId={id} pickCategory defaultCategory="QUOTATION" />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

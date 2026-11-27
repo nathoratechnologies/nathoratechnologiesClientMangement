@@ -74,3 +74,33 @@ export function fmtMoney(amount: number, currency = "INR") {
 }
 
 export const amountFor = (ms: number, rate: number) => Math.round(msToHours(ms) * rate * 100) / 100;
+
+/* ---------- Documents & payments ---------- */
+
+export const FILE_CATEGORIES = ["DOCUMENT", "QUOTATION", "INVOICE", "RECEIPT"] as const;
+export type FileCategory = (typeof FILE_CATEGORIES)[number];
+export const FILE_CATEGORY_LABEL: Record<string, string> = {
+  DOCUMENT: "Document",
+  QUOTATION: "Quotation",
+  INVOICE: "Invoice",
+  RECEIPT: "Receipt",
+};
+
+export const PAYMENT_METHODS = ["UPI", "BANK", "CASH", "CHEQUE", "CARD", "OTHER"] as const;
+export const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  UPI: "UPI",
+  BANK: "Bank transfer",
+  CASH: "Cash",
+  CHEQUE: "Cheque",
+  CARD: "Card",
+  OTHER: "Other",
+};
+
+/** Sums amounts per currency: "₹14,400.00" or "₹1,000.00 + $50.00". */
+export function sumByCurrency(items: { amount: number; currency: string }[]) {
+  const map = new Map<string, number>();
+  for (const i of items) map.set(i.currency, (map.get(i.currency) ?? 0) + i.amount);
+  return map;
+}
+export const fmtTotals = (map: Map<string, number>, fallback = "INR") =>
+  [...map.entries()].map(([c, a]) => fmtMoney(a, c)).join(" + ") || fmtMoney(0, fallback);
